@@ -191,7 +191,7 @@ export const App: React.FC = () => {
           error={mp.error}
           serverOnline={mp.serverOnline}
           isCheckingServer={mp.isCheckingServer}
-          onCreateRoom={(chapterId) => mp.createRoom(chapterId)}
+          onCreateRoom={() => void mp.createRoom()}
           onJoinRoom={(code) => mp.joinRoom(code)}
           onToggleReady={() => mp.sendReady()}
           onVoteChapter={(chapterId) => mp.sendVote(chapterId)}

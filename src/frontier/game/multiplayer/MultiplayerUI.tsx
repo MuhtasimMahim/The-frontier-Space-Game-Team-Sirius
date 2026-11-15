@@ -101,7 +101,6 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
 }) => {
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [copied, setCopied] = useState(false);
-  const [selectedInitialChapter, setSelectedInitialChapter] = useState<ChapterId>("chapter1");
 
   // Calculate vote tally
   const allVotes = useMemo(() => {
@@ -213,29 +212,14 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
                 <div className="text-sm font-extrabold text-[#8FD3FF] uppercase tracking-wider">
                   Host Mission
                 </div>
-                <p className="text-xs text-[#A5AFC8]">
+                <p className="text-xs text-[#A5AFC8] leading-relaxed">
                   Start a new invite-only room. You will receive a 4-character code to share with
-                  your crew.
+                  your crew. Once everyone is in, the crew will vote on the chapter together.
                 </p>
-
-                <label className="text-xs text-[#DFE6FF] mt-2 font-bold">Initial Chapter:</label>
-                <select
-                  value={selectedInitialChapter}
-                  onChange={(e) => setSelectedInitialChapter(e.target.value as ChapterId)}
-                  disabled={serverOnline === false}
-                  className="bg-[#121A30] border border-white/20 rounded-lg p-2 text-xs text-white cursor-pointer focus:outline-none focus:border-[#7EE0B8] disabled:opacity-50"
-                >
-                  {CHAPTERS.filter((c) => c.status === "playable").map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.number ? `Ch ${c.number}: ` : ""}
-                      {c.title}
-                    </option>
-                  ))}
-                </select>
               </div>
 
               <button
-                onClick={() => onCreateRoom(selectedInitialChapter)}
+                onClick={() => onCreateRoom()}
                 disabled={isConnecting || isCheckingServer || serverOnline === false}
                 className="w-full py-3 px-4 rounded-xl font-black text-sm bg-[#7EE0B8] hover:bg-[#9BF0CE] text-[#0F2A3A] transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
               >
@@ -383,9 +367,13 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
                       >
                         {player.ready ? "✓ READY" : "WAITING"}
                       </span>
-                      {playerVote && (
-                        <span className="text-[11px] text-[#8FD3FF] font-mono-num">
+                      {playerVote ? (
+                        <span className="text-[11px] text-[#8FD3FF] font-mono-num font-semibold">
                           Vote: {playerVote.replace("chapter", "Ch ")}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-[#A5AFC8]/70 italic">
+                          No vote yet
                         </span>
                       )}
                     </div>
@@ -423,9 +411,13 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
               </div>
             </div>
 
-            {tally.winner && (
+            {tally.winner ? (
               <div className="px-3 py-1 rounded-full bg-[#7EE0B8]/20 border border-[#7EE0B8]/40 text-[#7EE0B8] text-xs font-bold">
-                Winner: {CHAPTERS.find((c) => c.id === tally.winner)?.title}
+                Leading: {CHAPTERS.find((c) => c.id === tally.winner)?.title} ({tally.counts[tally.winner]}/{tally.totalVotes} votes)
+              </div>
+            ) : (
+              <div className="px-3 py-1 rounded-full bg-white/10 text-[#A5AFC8] text-xs">
+                {tally.totalVotes === 0 ? "Awaiting crew votes" : "Vote tied"}
               </div>
             )}
           </div>

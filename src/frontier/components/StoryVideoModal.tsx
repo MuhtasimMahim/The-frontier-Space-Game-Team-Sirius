@@ -15,7 +15,6 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [hasEnded, setHasEnded] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(video.durationSeconds);
   const [audioBlocked, setAudioBlocked] = useState<boolean>(false);
@@ -75,7 +74,6 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
     if (el.paused) {
       void el.play();
       setIsPlaying(true);
-      setHasEnded(false);
     } else {
       el.pause();
       setIsPlaying(false);
@@ -100,17 +98,8 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
   };
 
   const handleEnded = () => {
-    setHasEnded(true);
     setIsPlaying(false);
-  };
-
-  const handleReplay = () => {
-    const el = videoRef.current;
-    if (!el) return;
-    el.currentTime = 0;
-    setHasEnded(false);
-    void el.play();
-    setIsPlaying(true);
+    onClose();
   };
 
   const formatTime = (secs: number) => {
@@ -180,24 +169,20 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
             </button>
           )}
 
-          {/* Large Center Play / Replay Overlay Button when paused or finished */}
-          {(!isPlaying || hasEnded) && (
+          {/* Large Center Play Overlay Button when paused */}
+          {!isPlaying && (
             <div
-              onClick={hasEnded ? handleReplay : togglePlay}
+              onClick={togglePlay}
               className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] cursor-pointer"
             >
               <div
                 className="w-20 h-20 rounded-full flex items-center justify-center shadow-2xl transition-transform hover:scale-110 active:scale-95"
                 style={{ backgroundColor: video.accent, color: "#080C1A" }}
               >
-                {hasEnded ? (
-                  <span className="text-3xl font-black">↺</span>
-                ) : (
-                  <span className="text-3xl font-black ml-1">▶</span>
-                )}
+                <span className="text-3xl font-black ml-1">▶</span>
               </div>
               <p className="mt-3 text-sm font-bold text-white drop-shadow">
-                {hasEnded ? "Click to Replay" : "Click to Play"}
+                Click to Play
               </p>
             </div>
           )}
@@ -238,7 +223,7 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
               </span>
             </div>
 
-            {/* Bottom Primary Action: Skip or Continue */}
+            {/* Bottom Primary Action: Skip Intro */}
             <div className="flex items-center gap-3">
               <span className="text-[11px] text-[#AAB6DC] hidden md:inline">
                 Press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white">Esc</kbd> to skip intro
@@ -251,7 +236,7 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
                   color: "#080C1A",
                 }}
               >
-                <span>{hasEnded ? "Continue" : "Skip Intro"}</span>
+                <span>Skip Intro</span>
                 <span>→</span>
               </button>
             </div>
