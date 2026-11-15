@@ -229,4 +229,35 @@ describe("Phase 1 simulation regressions", () => {
     expect(sim.state.phase).toBe("title");
     expect(sim.state.menuOpen).toBe(false);
   });
+
+  it("provides extended oxygen capacity (5 minutes) and triggers rescue banner on zero O2", () => {
+    const sim = makePlayingSim();
+    // Move away from base/lander so player is outside
+    sim.state.player.x = 100;
+    sim.state.player.z = 100;
+    sim.state.player.inRover = false;
+    sim.state.player.oxygen = 100;
+
+    // Verify extended drain rate: drains exactly 100/300 per second
+    expect(CONFIG.OXYGEN.drainPerSecond).toBeCloseTo(100 / 300, 4);
+    sim.step(30);
+    // After 30s, oxygen should be approximately 90% (10% used)
+    expect(sim.state.player.oxygen).toBeCloseTo(90, 0);
+
+    // Set oxygen to right at the 15-second critical suffocation mark (15 * (100/300) = 5.0)
+    sim.state.player.oxygen = 4.0; // <= 15s remaining
+    sim.step(1);
+    expect(sim.state.player.oxygen).toBeLessThan(4.0);
+
+    // Drain completely to trigger emergency rescue drone
+    sim.state.player.oxygen = 0.1;
+    sim.step(1);
+
+    // Verify emergency drone rescue banner and state
+    expect(sim.state.rescueBanner).not.toBeNull();
+    expect(sim.state.rescueBanner?.message).toContain("Suit oxygen reached zero");
+    expect(sim.state.rescueBanner?.penaltyText).toContain("Penalty");
+    expect(sim.state.player.oxygen).toBe(CONFIG.OXYGEN.max);
+    expect(sim.state.stats.oxygenDeaths).toBe(1);
+  });
 });

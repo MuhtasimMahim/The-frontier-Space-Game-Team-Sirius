@@ -11,7 +11,7 @@ import {
   type GameState,
 } from "../game/simulation";
 import { coachForState } from "../game/coach";
-import { projectRadarBlip, remainingStarterPanels } from "../game/rules";
+import { RULES, projectRadarBlip, remainingStarterPanels } from "../game/rules";
 import {
   STORY,
   STORY_CHAPTERS,
@@ -223,8 +223,59 @@ export const HUD: React.FC<{ state: GameState }> = ({ state }) => {
       ? ["A"]
       : ["A", "B", "C"];
 
+  const drainRate =
+    CONFIG.OXYGEN.drainPerSecond * (state.activeStorm ? RULES.STORM_OXYGEN_MULT : 1.0);
+  const oxygenSecondsLeft =
+    state.player.oxygenSource === "none" && drainRate > 0
+      ? state.player.oxygen / drainRate
+      : Infinity;
+  const isCriticalOxygen =
+    state.player.oxygenSource === "none" &&
+    oxygenSecondsLeft <= CONFIG.OXYGEN.criticalSeconds;
+  const suffocationProgress = isCriticalOxygen
+    ? Math.min(1, Math.max(0, 1 - oxygenSecondsLeft / CONFIG.OXYGEN.criticalSeconds))
+    : 0;
+
   return (
     <div className="pointer-events-none absolute inset-0 select-none overflow-hidden text-white font-gotham text-sm">
+      {/* Dramatic Full-screen Red Vignette on Suffocation (<= 15s O2 remaining) */}
+      {isCriticalOxygen && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-30 transition-opacity duration-300"
+          style={{
+            background: `radial-gradient(ellipse at 50% 50%, transparent ${Math.max(
+              15,
+              45 - suffocationProgress * 25,
+            )}%, rgba(190, 10, 10, ${0.45 + 0.4 * suffocationProgress}) 75%, rgba(120, 0, 0, ${
+              0.85 + 0.15 * suffocationProgress
+            }) 100%)`,
+            boxShadow: `inset 0 0 ${Math.round(90 + suffocationProgress * 110)}px rgba(255, 0, 0, ${
+              0.65 + 0.35 * suffocationProgress
+            })`,
+            animation: `suffocation-pulse ${Math.max(0.55, 1.0 - suffocationProgress * 0.45)}s ease-in-out infinite`,
+          }}
+        />
+      )}
+
+      {/* Emergency Drone Rescue Banner */}
+      {state.rescueBanner && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col items-center max-w-lg w-full px-4 animate-bounce">
+          <div className="w-full p-4 rounded-xl bg-red-950/95 border-2 border-red-500 shadow-[0_0_35px_rgba(255,50,50,0.85)] backdrop-blur-md flex flex-col items-center text-center gap-1.5">
+            <div className="flex items-center gap-2 text-yellow-400 font-black text-sm uppercase tracking-wider">
+              <span>🚁</span>
+              <span>EMERGENCY DRONE RESCUE</span>
+              <span>🚁</span>
+            </div>
+            <div className="text-white text-sm font-bold leading-tight">
+              {state.rescueBanner.message}
+            </div>
+            <div className="text-red-300 text-xs font-semibold bg-red-900/60 px-3 py-1 rounded-md border border-red-700/60">
+              {state.rescueBanner.penaltyText}
+            </div>
+          </div>
+        </div>
+      )}
       {/* ============================================================== */}
       {/* LEFT COLUMN: RESOURCES (Width: 330px, Pos: 12px, 12px)        */}
       {/* ============================================================== */}
@@ -709,8 +760,12 @@ export const HUD: React.FC<{ state: GameState }> = ({ state }) => {
           </div>
         )}
 
-        {/* Low Oxygen Warning Hint */}
-        {state.player.oxygenSource === "none" && state.player.oxygen <= 25 && (
+        {/* Low Oxygen / Critical Suffocation Warning Hint */}
+        {isCriticalOxygen ? (
+          <div className="px-3 py-1 rounded-md bg-red-600/95 text-white font-black text-[13px] tracking-wider uppercase border border-red-300 shadow-[0_0_20px_rgba(255,0,0,0.85)] animate-pulse">
+            🚨 SUFFOCATING ({Math.ceil(oxygenSecondsLeft)}s) — GET TO ROVER OR HABITAT! 🚨
+          </div>
+        ) : state.player.oxygenSource === "none" && state.player.oxygen <= CONFIG.OXYGEN.lowWarning ? (
           <div
             className="text-[13px] font-bold animate-bounce uppercase tracking-wide"
             style={{ color: UI_COLORS.oxygen }}
@@ -719,7 +774,7 @@ export const HUD: React.FC<{ state: GameState }> = ({ state }) => {
               ? "Warning: Habitat A Damaged — Board Powered Rover or Repair Module A!"
               : "Warning: Return to Shelter or Powered Rover to Refill Oxygen!"}
           </div>
-        )}
+        ) : null}
 
         {/* Oxygen Bar Frame */}
         <div
@@ -731,13 +786,19 @@ export const HUD: React.FC<{ state: GameState }> = ({ state }) => {
             className="h-full rounded-[5px] transition-all duration-200"
             style={{
               width: `${Math.round(state.player.oxygen)}%`,
-              backgroundColor: state.player.oxygen <= 20 ? UI_COLORS.bad : UI_COLORS.oxygen,
+              backgroundColor: isCriticalOxygen
+                ? "#FF1E1E"
+                : state.player.oxygen <= 20
+                  ? UI_COLORS.bad
+                  : UI_COLORS.oxygen,
             }}
           />
 
           {/* Text Overlay */}
           <div className="absolute inset-0 flex items-center justify-center font-bold text-[14px] text-white tracking-wide text-stroke-world">
-            OXYGEN {Math.round(state.player.oxygen)}%
+            {isCriticalOxygen
+              ? `OXYGEN ${Math.round(state.player.oxygen)}% (${Math.ceil(oxygenSecondsLeft)}s CRITICAL)`
+              : `OXYGEN ${Math.round(state.player.oxygen)}%`}
           </div>
         </div>
       </div>

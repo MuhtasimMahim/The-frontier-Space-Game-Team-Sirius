@@ -234,3 +234,16 @@
     1px 1px 0 rgba(8, 12, 26, 0.7),
     0 2px 4px rgba(0, 0, 0, 0.8);
 }
+
+/* Dramatic suffocation heartbeat pulse for low-oxygen red vignette */
+@keyframes suffocation-pulse {
+  0% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.75;
+  }
+}

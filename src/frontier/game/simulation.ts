@@ -170,6 +170,12 @@ export interface RoverState {
   boostCooldown: number;
 }
 
+export interface RescueBannerState {
+  timer: number;
+  message: string;
+  penaltyText: string;
+}
+
 export interface GameState {
   phase: GamePhase;
   missionMode: MissionMode;
@@ -247,6 +253,7 @@ export interface GameState {
     title: string;
     edu: string;
   } | null;
+  rescueBanner: RescueBannerState | null;
   lastOverflowDay: number;
   lowBatteryWarned: boolean;
   dockState: DockState;
@@ -308,6 +315,7 @@ export class SimulationManager {
   private tickInterval: number | null = null;
   private pendingTimeouts: Set<number> = new Set();
   private breathTimer: number = 0;
+  private helmetAlarmTimer: number = 0;
   private doorCloseTimer: number = 0;
   private factTimer = 0;
   /** Online co-op: emit local gameplay actions so peers can mirror them. */
@@ -513,6 +521,7 @@ export class SimulationManager {
       stormWarningDays: 0,
       events: buildEventSchedule(scheduleSeed),
       eventBanner: null,
+      rescueBanner: null,
       lastOverflowDay: -1,
       lowBatteryWarned: false,
       dockState: "docked",
@@ -658,6 +667,7 @@ export class SimulationManager {
     this.factTimer = 0;
     this.factGap = 99;
     this.breathTimer = 0;
+    this.helmetAlarmTimer = 0;
     this.doorCloseTimer = 0;
     this.stormWarnTimer = 0;
     this.state = this.getInitialState();
@@ -702,6 +712,7 @@ export class SimulationManager {
     st.events = [];
     st.networkOpen = false;
     st.eventBanner = null;
+    st.rescueBanner = null;
     st.activeStorm = false;
     // Full tank so long survey / pack runs don't strand a new player immediately
     st.rover.battery = st.rover.batteryMax;
@@ -868,14 +879,12 @@ export class SimulationManager {
       }
     }
 
-    // Oxygen consumption & astronaut breathing audio
-    this.breathTimer += dt;
-    const isLowOxygen = this.state.player.oxygen <= 25;
-    const breathInterval = isLowOxygen ? 1.8 : 4.0;
-
-    if (this.breathTimer >= breathInterval) {
-      this.breathTimer = 0;
-      sound.playBreathing(isLowOxygen);
+    // Advance rescue banner timer if active
+    if (this.state.rescueBanner) {
+      this.state.rescueBanner.timer -= dt;
+      if (this.state.rescueBanner.timer <= 0) {
+        this.state.rescueBanner = null;
+      }
     }
 
     const atHabitatDoor =
@@ -894,6 +903,21 @@ export class SimulationManager {
       roverPowered,
     });
 
+    let drain = CONFIG.OXYGEN.drainPerSecond;
+    if (this.state.activeStorm) drain *= RULES.STORM_OXYGEN_MULT;
+    const secondsLeft = !refilling && drain > 0 ? this.state.player.oxygen / drain : Infinity;
+    const isCriticalOxygen = secondsLeft <= CONFIG.OXYGEN.criticalSeconds;
+    const isLowOxygen = this.state.player.oxygen <= CONFIG.OXYGEN.lowWarning;
+
+    // Oxygen consumption & astronaut breathing audio
+    this.breathTimer += dt;
+    const breathInterval = isCriticalOxygen ? 1.0 : isLowOxygen ? 1.8 : 4.0;
+
+    if (this.breathTimer >= breathInterval) {
+      this.breathTimer = 0;
+      sound.playBreathing(isLowOxygen || isCriticalOxygen);
+    }
+
     this.state.player.insideAirlock = !this.state.player.inRover && refilling;
     this.state.player.oxygenSource = !refilling
       ? "none"
@@ -904,6 +928,7 @@ export class SimulationManager {
           : "lander";
 
     if (refilling) {
+      this.helmetAlarmTimer = 0.8;
       this.state.player.oxygen = Math.min(
         CONFIG.OXYGEN.max,
         this.state.player.oxygen + CONFIG.OXYGEN.refillPerSecond * dt,
@@ -921,15 +946,23 @@ export class SimulationManager {
         return;
       }
     } else {
-      let drain = CONFIG.OXYGEN.drainPerSecond;
-      if (this.state.activeStorm) drain *= RULES.STORM_OXYGEN_MULT;
       if (this.state.player.oxygen <= 30) this.triggerFact("oxygen");
       const prevFloor = Math.floor(this.state.player.oxygen);
       this.state.player.oxygen = Math.max(0, this.state.player.oxygen - drain * dt);
       const nextFloor = Math.floor(this.state.player.oxygen);
 
-      if (this.state.player.oxygen <= 20 && nextFloor < prevFloor && nextFloor % 5 === 0) {
-        sound.playWarning();
+      if (isCriticalOxygen) {
+        // Dramatic helmet alarm (low muffled caution tone) at 15s remaining
+        this.helmetAlarmTimer += dt;
+        if (this.helmetAlarmTimer >= 1.0) {
+          this.helmetAlarmTimer = 0;
+          sound.playHelmetAlarm();
+        }
+      } else {
+        this.helmetAlarmTimer = 0.8;
+        if (isLowOxygen && nextFloor < prevFloor && nextFloor % 5 === 0) {
+          sound.playWarning();
+        }
       }
 
       if (this.state.player.oxygen <= 0) {
@@ -1216,7 +1249,13 @@ export class SimulationManager {
 
   private onOxygenFailure() {
     this.state.stats.oxygenDeaths += 1;
+    sound.playRadioSquelch();
     sound.playWarning();
+    this.state.rescueBanner = {
+      timer: 8.0,
+      message: `Suit oxygen reached zero! Emergency rescue drone retrieved you to ${this.campName()}.`,
+      penaltyText: `Penalty: -${CONFIG.OXYGEN.deathPenalty.water} Water, -${CONFIG.OXYGEN.deathPenalty.food} Food. Watch your oxygen countdown!`,
+    };
     // Child-friendly emergency rescue beacon: teleport astronaut to shelter with O2 refilled and apply supply cost
     const penalty = applyOxygenRescuePenalty(this.state.food, this.state.water);
     this.state.food = penalty.food;
@@ -2117,6 +2156,7 @@ export class SimulationManager {
     st.stage = "done";
     st.activeStorm = false;
     st.eventBanner = null;
+    st.rescueBanner = null;
     st.story.aiming = false;
     st.stats.daysTaken = st.day;
     st.campaignDone = markChapterComplete(def.id);
@@ -2677,6 +2717,7 @@ export class SimulationManager {
     this.factTimer = 0;
     this.factGap = 99;
     this.breathTimer = 0;
+    this.helmetAlarmTimer = 0;
     this.doorCloseTimer = 0;
     this.state = this.getInitialState(seed);
     this.startGame();
@@ -2694,6 +2735,7 @@ export class SimulationManager {
     this.factTimer = 0;
     this.factGap = 99;
     this.breathTimer = 0;
+    this.helmetAlarmTimer = 0;
     this.doorCloseTimer = 0;
     const seed = this.state.seed;
     this.state = this.getInitialState(seed);
@@ -2739,6 +2781,7 @@ export class SimulationManager {
     this.factTimer = 0;
     this.factGap = 99;
     this.breathTimer = 0;
+    this.helmetAlarmTimer = 0;
     this.doorCloseTimer = 0;
     this.state = this.getInitialState(this.state.seed);
     this.notify();

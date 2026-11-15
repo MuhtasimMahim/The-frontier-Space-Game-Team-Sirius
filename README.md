@@ -2,9 +2,21 @@
 
 ### *Artemis Lunar South Pole Base Survival & Exploration Simulation*
 
+![The Frontier - Team Sirius - NASA Space Apps Challenge](public/banner.jpg)
+
 [![Live Game](https://img.shields.io/badge/Play%20Live-the--frontier--game.vercel.app-7EE0B8?style=for-the-badge&logo=vercel)](https://the-frontier-game.vercel.app/)
+[![Video Presentation](https://img.shields.io/badge/YouTube-Video%20Presentation-FF0000?style=for-the-badge&logo=youtube)](https://youtu.be/i2C3QRcXBWo?si=6Dxj1w6UWJXKtHRN)
+[![Figma Deck](https://img.shields.io/badge/Figma-Presentation%20Deck-F24E1E?style=for-the-badge&logo=figma)](https://www.figma.com/deck/pYTIQbhNW6rMwlEVfJ5D1p/Team-Sirius?node-id=1-116&t=v5uY4qxpXEr7W0eq-1)
 [![Multiplayer Server](https://img.shields.io/badge/Server%20Status-Heroku%20Online-8FD3FF?style=for-the-badge&logo=heroku)](https://the-frontier-colyseus-996f14385e12.herokuapp.com/health)
 [![NASA Space Apps](https://img.shields.io/badge/NASA%20Space%20Apps-Challenge%202026-FFD166?style=for-the-badge&logo=nasa)](https://www.spaceappschallenge.org/)
+
+---
+
+## 📽️ Project Links & Presentation
+
+- **📊 Presentation File:** [Team Sirius Figma Presentation Deck](https://www.figma.com/deck/pYTIQbhNW6rMwlEVfJ5D1p/Team-Sirius?node-id=1-116&t=v5uY4qxpXEr7W0eq-1)
+- **🎥 Video Presentation:** [YouTube Video Presentation](https://youtu.be/i2C3QRcXBWo?si=6Dxj1w6UWJXKtHRN)
+- **🎮 Live Playable Game:** [https://the-frontier-game.vercel.app/](https://the-frontier-game.vercel.app/)
 
 ---
 

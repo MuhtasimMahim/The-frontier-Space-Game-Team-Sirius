@@ -149,9 +149,12 @@ export const CONFIG = {
   // Oxygen
   OXYGEN: {
     max: 100,
-    drainPerSecond: 100 / 60,
+    /** Drains 100% over 300 seconds (5 minutes) on foot so players can roam and explore freely. */
+    drainPerSecond: 100 / 300,
     refillPerSecond: 10,
     lowWarning: 20,
+    /** Seconds of O2 remaining at which the helmet alarm + dramatic red vignette kick in. */
+    criticalSeconds: 15,
     deathPenalty: { food: 1, water: 2 },
   },
 

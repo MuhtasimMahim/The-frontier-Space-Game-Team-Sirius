@@ -255,6 +255,42 @@ class SoundEngine {
     osc.stop(ctx.currentTime + 0.32);
   }
 
+  /**
+   * Muffled interior helmet alarm for critical oxygen / suffocation (at 15 seconds remaining).
+   * Low sound (low volume + low-pass muffled tone) to sound like a suit interior caution chime.
+   */
+  public playHelmetAlarm() {
+    const ctx = this.getContext();
+    if (!ctx || this.isMuted) return;
+
+    const t0 = ctx.currentTime;
+    // Dual subtle low-frequency pips: 260Hz -> 200Hz
+    [0, 0.12].forEach((offset) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(260, t0 + offset);
+      osc.frequency.exponentialRampToValueAtTime(200, t0 + offset + 0.08);
+
+      // Lowpass filter to muffle the sound inside helmet padding
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(450, t0 + offset);
+
+      gain.gain.setValueAtTime(0.001, t0 + offset);
+      gain.gain.linearRampToValueAtTime(0.06, t0 + offset + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + offset + 0.09);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc.start(t0 + offset);
+      osc.stop(t0 + offset + 0.1);
+    });
+  }
+
   // Ice drilling / extraction sound
   public playIceDrill() {
     const ctx = this.getContext();
