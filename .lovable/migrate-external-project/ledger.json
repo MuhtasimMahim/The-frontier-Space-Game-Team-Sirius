@@ -1,0 +1,16 @@
+[
+  {
+    "capability": "code",
+    "source": "web-frontier.zip",
+    "outcome": "migrate",
+    "status": "verified",
+    "next_action": null
+  },
+  {
+    "capability": "database/auth/records",
+    "source": "none detected",
+    "outcome": "n/a",
+    "status": "absent",
+    "next_action": null
+  }
+]
