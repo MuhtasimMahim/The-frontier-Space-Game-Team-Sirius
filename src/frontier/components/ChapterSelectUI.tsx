@@ -124,12 +124,13 @@ export const ChapterSelectUI: React.FC<{ state: GameState }> = ({ state }) => {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {CHAPTERS.map((ch) => {
+          {CHAPTERS.map((ch, idx, arr) => {
             const locked = ch.status !== "playable";
             const voteCount = isCrew ? (tally.counts[ch.id] ?? 0) : 0;
             const isWinner = isCrew && tally.winner === ch.id;
             const done = state.campaignDone.includes(ch.id);
             const isNext = !locked && nextUp === ch.id;
+            const isLast = idx === arr.length - 1 && arr.length % 2 === 1;
 
             return (
               <div
@@ -140,7 +141,7 @@ export const ChapterSelectUI: React.FC<{ state: GameState }> = ({ state }) => {
                     : isNext
                       ? "border-[#FFD166]/60"
                       : "border-white/10"
-                } ${locked ? "opacity-60" : ""}`}
+                } ${locked ? "opacity-60" : ""} ${isLast ? "md:col-span-2" : ""}`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span
