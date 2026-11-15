@@ -192,8 +192,8 @@ export const HUD: React.FC<{ state: GameState }> = ({ state }) => {
 
   const originX = state.player.inRover ? state.rover.x : state.player.x;
   const originZ = state.player.inRover ? state.rover.z : state.player.z;
-  // Walking camera looks along -Z (heading Math.PI); rover camera looks along rover.rotation
-  const cameraHeading = state.player.inRover ? state.rover.rotation : Math.PI;
+  // Camera view heading: rotates radar with camera view (GTA-style)
+  const cameraHeading = state.cameraHeading ?? (state.player.inRover ? state.rover.rotation : Math.PI);
   const homeBlip = projectRadarBlip(originX, originZ, DOCK.x, DOCK.z, cameraHeading);
 
   const stageTarget = story

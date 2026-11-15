@@ -135,10 +135,32 @@ export class PlayCanvasLunarWorld {
   private stormBlend = 0;
   private meteorDaySeen = -1;
   private cameraFrame: pc.CameraFrame | null = null;
+  private canvas: HTMLCanvasElement;
+
+  // GTA-style Orbit Camera & Mouse Controls
+  public camYaw: number = 0; // horizontal orbit angle (rad): 0 = looking -Z (North)
+  public camPitch: number = 0.35; // vertical angle (rad): ~20 deg above horizon
+  public camDist: number = 14; // astronaut camera distance (m)
+  public camDistRover: number = 16; // rover camera distance (m)
+  private isPointerLocked: boolean = false;
+  private isMouseDown: boolean = false;
+  private lastMouseX: number = 0;
+  private lastMouseY: number = 0;
+  private mouseSensitivity: number = 0.003;
+  private roverAutoCenterTimer: number = 0;
+  private lastInRover: boolean = false;
+
   private onResize!: () => void;
   private onKeyDown!: (e: KeyboardEvent) => void;
   private onKeyUp!: (e: KeyboardEvent) => void;
   private onBlur!: () => void;
+  private onMouseDown!: (e: MouseEvent) => void;
+  private onMouseMove!: (e: MouseEvent) => void;
+  private onMouseUp!: (e: MouseEvent) => void;
+  private onWheel!: (e: WheelEvent) => void;
+  private onPointerLockChange!: () => void;
+  private onContextMenu!: (e: MouseEvent) => void;
+
   public quality: Quality = "medium";
   public get modelsLoaded() {
     return this.kit.loaded;
@@ -148,6 +170,7 @@ export class PlayCanvasLunarWorld {
   }
 
   constructor(canvas: HTMLCanvasElement, siteKey: SiteKey = "nobile") {
+    this.canvas = canvas;
     this.app = new pc.Application(canvas, {
       keyboard: new pc.Keyboard(window),
       mouse: new pc.Mouse(canvas),
@@ -1440,22 +1463,119 @@ export class PlayCanvasLunarWorld {
     this.onBlur = () => {
       this.keys = {};
       this.holdLatch = false;
+      this.isMouseDown = false;
+    };
+
+    this.onMouseDown = (e: MouseEvent) => {
+      if (this.isDestroyed) return;
+      if (gameSim.state.phase === "playing" && !gameSim.state.menuOpen) {
+        if (e.button === 0 || e.button === 2) {
+          if (!this.isPointerLocked && document.pointerLockElement !== this.canvas) {
+            try {
+              this.canvas.requestPointerLock();
+            } catch {
+              // ignore if pointer lock is unavailable
+            }
+          }
+          this.isMouseDown = true;
+          this.lastMouseX = e.clientX;
+          this.lastMouseY = e.clientY;
+        }
+      }
+    };
+
+    this.onMouseMove = (e: MouseEvent) => {
+      if (this.isDestroyed) return;
+      if (gameSim.state.phase !== "playing" || gameSim.state.menuOpen) return;
+
+      let dx = 0;
+      let dy = 0;
+      if (this.isPointerLocked) {
+        dx = e.movementX;
+        dy = e.movementY;
+      } else if (this.isMouseDown) {
+        dx = e.clientX - this.lastMouseX;
+        dy = e.clientY - this.lastMouseY;
+        this.lastMouseX = e.clientX;
+        this.lastMouseY = e.clientY;
+      }
+
+      if (dx !== 0 || dy !== 0) {
+        if (gameSim.state.story.aiming) {
+          // Chapter 3: summit dish aiming
+          gameSim.adjustAim(-dx * 0.002, dy * 0.002);
+        } else {
+          // GTA-style third-person orbit look
+          this.camYaw -= dx * this.mouseSensitivity;
+          this.camPitch += dy * this.mouseSensitivity;
+          this.camPitch = Math.max(-0.25, Math.min(1.2, this.camPitch));
+          this.roverAutoCenterTimer = 1.8;
+        }
+      }
+    };
+
+    this.onMouseUp = () => {
+      this.isMouseDown = false;
+    };
+
+    this.onWheel = (e: WheelEvent) => {
+      if (this.isDestroyed) return;
+      if (gameSim.state.phase !== "playing" || gameSim.state.menuOpen) return;
+      const delta = e.deltaY * 0.01;
+      if (gameSim.state.player.inRover) {
+        this.camDistRover = Math.max(8, Math.min(35, this.camDistRover + delta));
+      } else {
+        this.camDist = Math.max(5, Math.min(25, this.camDist + delta));
+      }
+    };
+
+    this.onPointerLockChange = () => {
+      this.isPointerLocked = document.pointerLockElement === this.canvas;
+    };
+
+    this.onContextMenu = (e: MouseEvent) => {
+      if (gameSim.state.phase === "playing") {
+        e.preventDefault();
+      }
     };
 
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("blur", this.onBlur);
+    this.canvas.addEventListener("mousedown", this.onMouseDown);
+    window.addEventListener("mousemove", this.onMouseMove);
+    window.addEventListener("mouseup", this.onMouseUp);
+    this.canvas.addEventListener("wheel", this.onWheel, { passive: true });
+    document.addEventListener("pointerlockchange", this.onPointerLockChange);
+    this.canvas.addEventListener("contextmenu", this.onContextMenu);
   }
 
   private update(dt: number) {
     if (this.isDestroyed) return;
     // Sky, Sun, and Earth stay at "infinity" around the camera even on menus
     this.sky?.update(this.cameraEntity.getPosition(), dt);
-    if (gameSim.state.phase !== "playing" || gameSim.state.menuOpen) return;
+    if (gameSim.state.phase !== "playing" || gameSim.state.menuOpen) {
+      if (document.pointerLockElement === this.canvas) {
+        try {
+          document.exitPointerLock();
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
 
     const state = gameSim.state;
     this.remotePlayerManager.update(dt);
     this.stormController.update(dt, state.activeStorm, state.eventBanner);
+    if (state.player.inRover !== this.lastInRover) {
+      this.lastInRover = state.player.inRover;
+      if (state.player.inRover && this.rover) {
+        this.camYaw = this.rover.heading + Math.PI;
+        this.camPitch = 0.35;
+        this.roverAutoCenterTimer = 0;
+      }
+    }
     const look = this.look;
     const meX = state.player.inRover ? state.rover.x : state.player.x;
     const meZ = state.player.inRover ? state.rover.z : state.player.z;
@@ -1670,6 +1790,13 @@ export class PlayCanvasLunarWorld {
         state.rover.rotation,
         this.terrainHeightMap,
       );
+      if (state.player.inRover) {
+        this.camYaw = state.rover.rotation + Math.PI;
+      } else {
+        this.camYaw = 0;
+      }
+      this.camPitch = 0.35;
+      this.lastInRover = state.player.inRover;
     }
     if (state.story.aiming && this.story) {
       this.updateAim(dt);
@@ -1695,13 +1822,29 @@ export class PlayCanvasLunarWorld {
 
   private updatePlayer(dt: number) {
     const state = gameSim.state;
-    let dx = 0,
-      dz = 0;
-    if (this.keys["w"] || this.keys["arrowup"]) dz -= 1;
-    if (this.keys["s"] || this.keys["arrowdown"]) dz += 1;
-    if (this.keys["a"] || this.keys["arrowleft"]) dx -= 1;
-    if (this.keys["d"] || this.keys["arrowright"]) dx += 1;
-    const len = Math.hypot(dx, dz) || 1;
+    let fwd = 0,
+      str = 0;
+    if (this.keys["w"] || this.keys["arrowup"]) fwd += 1;
+    if (this.keys["s"] || this.keys["arrowdown"]) fwd -= 1;
+    if (this.keys["a"] || this.keys["arrowleft"]) str -= 1;
+    if (this.keys["d"] || this.keys["arrowright"]) str += 1;
+
+    // Camera-relative forward and right vectors projected onto the horizontal XZ plane
+    const camForwardX = -Math.sin(this.camYaw);
+    const camForwardZ = -Math.cos(this.camYaw);
+    const camRightX = Math.cos(this.camYaw);
+    const camRightZ = -Math.sin(this.camYaw);
+
+    let moveX = camForwardX * fwd + camRightX * str;
+    let moveZ = camForwardZ * fwd + camRightZ * str;
+    const len = Math.hypot(moveX, moveZ);
+    if (len > 0.001) {
+      moveX /= len;
+      moveZ /= len;
+    } else {
+      moveX = 0;
+      moveZ = 0;
+    }
 
     const a = this.astro;
     // resync if the sim moved the player (e.g. exiting the rover)
@@ -1714,7 +1857,7 @@ export class PlayCanvasLunarWorld {
     const wasGrounded = a.grounded;
     stepAstronaut(
       a,
-      { x: (dx / len) * (dx || dz ? 1 : 0), z: (dz / len) * (dx || dz ? 1 : 0) },
+      { x: moveX, z: moveZ },
       this.jumpQueued,
       dt,
       this.terrainHeightMap,
@@ -1727,6 +1870,7 @@ export class PlayCanvasLunarWorld {
     state.player.x = a.x;
     state.player.z = a.z;
     state.player.rotation = a.heading;
+    state.cameraHeading = this.camYaw + Math.PI;
     this.playerEntity.setPosition(a.x, a.y, a.z);
     // slight forward lean while bounding
     const lean = Math.min(15, Math.hypot(a.vx, a.vz) * 2);
@@ -1746,12 +1890,20 @@ export class PlayCanvasLunarWorld {
     const ground = this.terrainHeightMap(a.x, a.z);
     const camY = Math.max(ground, a.y * 0.5 + ground * 0.5);
     const focus = this.story?.cameraFocus(state.story) ?? null;
+
+    // GTA-style third-person orbit camera
+    const cosPitch = Math.cos(this.camPitch);
+    const sinPitch = Math.sin(this.camPitch);
+    const offsetX = Math.sin(this.camYaw) * cosPitch * this.camDist;
+    const offsetZ = Math.cos(this.camYaw) * cosPitch * this.camDist;
+    const offsetY = sinPitch * this.camDist;
+
     const target = focus
       ? new pc.Vec3(a.x, camY + 5, a.z + 24)
-      : new pc.Vec3(a.x, camY + 7, a.z + 14);
-    target.y = Math.max(target.y, this.terrainHeightMap(target.x, target.z) + 2);
+      : new pc.Vec3(a.x + offsetX, a.y + 1.6 + offsetY, a.z + offsetZ);
+    target.y = Math.max(target.y, this.terrainHeightMap(target.x, target.z) + 1.5);
     const cp = this.cameraEntity.getPosition();
-    const k = 1 - Math.exp(-5 * Math.min(dt, 0.05));
+    const k = 1 - Math.exp(-10 * Math.min(dt, 0.05));
     this.cameraEntity.setPosition(
       pc.math.lerp(cp.x, target.x, k),
       pc.math.lerp(cp.y, target.y, k),
@@ -1870,6 +2022,7 @@ export class PlayCanvasLunarWorld {
     state.rover.x = r.x;
     state.rover.z = r.z;
     state.rover.rotation = r.heading;
+    state.cameraHeading = this.camYaw + Math.PI;
     sound.setRoverEngineSpeed(Math.min(1, speed / R.maxSpeed), state.rover.isBoosting);
 
     this.roverEntity.setPosition(r.x, r.y - ROVER_PHYS.RIDE_HEIGHT, r.z);
@@ -1885,15 +2038,29 @@ export class PlayCanvasLunarWorld {
     this.astro.x = r.x + 3;
     this.astro.z = r.z;
 
-    const camX = r.x - Math.sin(r.heading) * 15,
-      camZ = r.z - Math.cos(r.heading) * 15;
+    // Rover camera auto-centering behind vehicle when driving without mouse input
+    if (this.roverAutoCenterTimer > 0) {
+      this.roverAutoCenterTimer -= dt;
+    } else if (speed > 0.8) {
+      const desiredYaw = r.heading + Math.PI;
+      let diff = desiredYaw - this.camYaw;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      this.camYaw += diff * Math.min(1, 2.5 * dt);
+    }
+
+    const cosPitch = Math.cos(this.camPitch);
+    const sinPitch = Math.sin(this.camPitch);
+    const camX = r.x + Math.sin(this.camYaw) * cosPitch * this.camDistRover;
+    const camZ = r.z + Math.cos(this.camYaw) * cosPitch * this.camDistRover;
+    const camY = r.y + 1.2 + sinPitch * this.camDistRover;
+
     const target = new pc.Vec3(
       camX,
-      Math.max(r.y + 6.5, this.terrainHeightMap(camX, camZ) + 3),
+      Math.max(camY, this.terrainHeightMap(camX, camZ) + 2.5),
       camZ,
     );
     const cp = this.cameraEntity.getPosition();
-    const k = 1 - Math.exp(-4 * Math.min(dt, 0.05));
+    const k = 1 - Math.exp(-6 * Math.min(dt, 0.05));
     this.cameraEntity.setPosition(
       pc.math.lerp(cp.x, target.x, k),
       pc.math.lerp(cp.y, target.y, k),
@@ -2340,6 +2507,19 @@ export class PlayCanvasLunarWorld {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onBlur);
+    this.canvas.removeEventListener("mousedown", this.onMouseDown);
+    window.removeEventListener("mousemove", this.onMouseMove);
+    window.removeEventListener("mouseup", this.onMouseUp);
+    this.canvas.removeEventListener("wheel", this.onWheel);
+    document.removeEventListener("pointerlockchange", this.onPointerLockChange);
+    this.canvas.removeEventListener("contextmenu", this.onContextMenu);
+    if (document.pointerLockElement === this.canvas) {
+      try {
+        document.exitPointerLock();
+      } catch {
+        // ignore
+      }
+    }
     if (this.cameraFrame) {
       this.cameraFrame.destroy();
       this.cameraFrame = null;

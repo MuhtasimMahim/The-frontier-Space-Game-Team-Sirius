@@ -103,16 +103,21 @@ const StoryBriefing: React.FC<{ state: GameState; def: StoryChapterDef }> = ({ s
             <div className="rounded-[16px] bg-[#080C1A]/60 border border-white/10 p-4 flex flex-col gap-2 text-xs text-[#CFD8F7]">
               <div className="font-bold uppercase tracking-wider text-[#8FD3FF]">Controls</div>
               <div>
-                <strong className="text-white">W A S D:</strong> Walk &amp; drive ·{" "}
-                <strong className="text-white">Shift:</strong> Rover boost
+                <strong className="text-white">Mouse:</strong> Look around (GTA orbit) · Click to lock cursor ·{" "}
+                <strong className="text-white">Wheel:</strong> Zoom
+              </div>
+              <div>
+                <strong className="text-white">W A S D:</strong> Move relative to view · Drive rover ·{" "}
+                <strong className="text-white">Shift:</strong> Boost
               </div>
               <div>
                 <strong className="text-white">Space:</strong> Jump · Exit rover ·{" "}
-                <strong className="text-white">E / Hold E:</strong> Act
+                <strong className="text-white">E / Hold E:</strong> Act ·{" "}
+                <strong className="text-white">Esc:</strong> Unlock cursor / Pause
               </div>
               {def.id === "chapter3" && (
                 <div>
-                  <strong className="text-white">Aiming the dish:</strong> A/D turn, W/S tilt, hold
+                  <strong className="text-white">Aiming the dish:</strong> Mouse or A/D turn, W/S tilt, hold
                   E to lock, Space to step away
                 </div>
               )}
@@ -374,6 +379,13 @@ export const PauseMenuUI: React.FC<{ state: GameState }> = ({ state }) => {
           >
             Exit to Title
           </button>
+        </div>
+
+        <div className="rounded-[16px] bg-[#080C1A]/60 border border-white/10 p-3.5 flex flex-col gap-1 text-xs text-[#CFD8F7]">
+          <div className="font-bold uppercase tracking-wider text-[#8FD3FF]">Controls</div>
+          <div><strong className="text-white">Mouse:</strong> Look around (GTA orbit) · Click to lock cursor · Scroll to zoom</div>
+          <div><strong className="text-white">W A S D:</strong> Move relative to camera view · Steer rover</div>
+          <div><strong className="text-white">Esc:</strong> Unlock cursor / pause</div>
         </div>
 
         <p className="text-xs text-center text-[#AAB6DC]">Press Esc again to resume</p>

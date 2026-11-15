@@ -186,6 +186,9 @@ export interface GameState {
   dailyWaterDelta: number;
   dailyFoodDelta: number;
 
+  /** Camera view heading (radians, aligned with radar: 0 = +z, PI = -z). */
+  cameraHeading?: number;
+
   // Panels & orientation
   panelsInstalled: number;
   panelsInstalledToday: number;
@@ -350,6 +353,7 @@ export class SimulationManager {
       dailyEnergyDelta: 0,
       dailyWaterDelta: -CONFIG.CREW.water,
       dailyFoodDelta: -CONFIG.CREW.food,
+      cameraHeading: Math.PI,
 
       panelsInstalled: 0,
       panelsInstalledToday: 0,
