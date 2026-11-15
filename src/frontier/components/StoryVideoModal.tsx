@@ -1,4 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
+import {
+  getIntroVideoSrc,
+  startIntroVideoPreload,
+} from "../game/introVideoPreload";
 import type { StoryVideoDef } from "../game/storyVideos";
 
 interface StoryVideoModalProps {
@@ -12,12 +16,35 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
   onClose,
   autoPlay = true,
 }) => {
+  const isIntro = video.id === "intro";
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [playbackSrc, setPlaybackSrc] = useState<string>(() =>
+    isIntro ? getIntroVideoSrc() : video.src,
+  );
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(video.durationSeconds);
   const [audioBlocked, setAudioBlocked] = useState<boolean>(false);
+  const [buffering, setBuffering] = useState<boolean>(isIntro);
+
+  // Intro only: prefer the blob URL warmed on the title screen
+  useEffect(() => {
+    if (!isIntro) {
+      setPlaybackSrc(video.src);
+      setBuffering(false);
+      return;
+    }
+    let cancelled = false;
+    setBuffering(true);
+    void startIntroVideoPreload().then((src) => {
+      if (cancelled) return;
+      setPlaybackSrc(src);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isIntro, video.src]);
 
   // Keyboard shortcut: Esc or Space to skip/close
   useEffect(() => {
@@ -41,32 +68,62 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  // Attempt autoplay with sound, fall back to muted if browser blocks unmuted audio
+  // Attempt autoplay with sound, fall back to muted if browser blocks unmuted audio.
+  // Intro waits for canplay so a cold fetch doesn't stutter the first frames.
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !autoPlay) return;
 
-    el.currentTime = 0;
-    el.muted = false;
-    const playPromise = el.play();
+    let cancelled = false;
 
-    if (playPromise !== undefined) {
+    const tryPlay = () => {
+      if (cancelled) return;
+      setBuffering(false);
+      el.currentTime = 0;
+      el.muted = false;
+      const playPromise = el.play();
+      if (playPromise === undefined) return;
       playPromise
         .then(() => {
+          if (cancelled) return;
           setIsPlaying(true);
           setAudioBlocked(false);
         })
         .catch(() => {
+          if (cancelled) return;
           // Browser prevented unmuted autoplay; mute and retry
           el.muted = true;
           setIsMuted(true);
           setAudioBlocked(true);
           el.play()
-            .then(() => setIsPlaying(true))
-            .catch(() => setIsPlaying(false));
+            .then(() => {
+              if (!cancelled) setIsPlaying(true);
+            })
+            .catch(() => {
+              if (!cancelled) setIsPlaying(false);
+            });
         });
+    };
+
+    if (isIntro) {
+      if (el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+        tryPlay();
+      } else {
+        const onReady = () => tryPlay();
+        el.addEventListener("canplay", onReady, { once: true });
+        return () => {
+          cancelled = true;
+          el.removeEventListener("canplay", onReady);
+        };
+      }
+    } else {
+      tryPlay();
     }
-  }, [autoPlay, video.src]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [autoPlay, playbackSrc, isIntro]);
 
   const togglePlay = () => {
     const el = videoRef.current;
@@ -149,7 +206,7 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
         <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden group">
           <video
             ref={videoRef}
-            src={video.src}
+            src={playbackSrc}
             playsInline
             preload="auto"
             onTimeUpdate={handleTimeUpdate}
@@ -157,6 +214,12 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
             onClick={togglePlay}
             className="w-full h-full object-contain cursor-pointer"
           />
+
+          {isIntro && buffering && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none">
+              <p className="text-sm font-bold text-white/90 tracking-wide">Loading dispatch…</p>
+            </div>
+          )}
 
           {/* Audio unblock prompt banner if browser blocked audio */}
           {audioBlocked && (

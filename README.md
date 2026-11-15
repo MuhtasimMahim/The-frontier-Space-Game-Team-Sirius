@@ -14,7 +14,7 @@
 
 Players must survive a grueling **60-mission-day operational window** across four real Artemis candidate landing sites. Balance critical life support reserves (**Energy, Water, Food, Oxygen**), prospect and harvest sub-surface water ice from Permanently Shadowed Regions (PSRs), deploy solar arrays along illuminated crater rims, survive extreme space weather events, and construct a self-sustaining four-camp outpost network.
 
-Playable **Solo** through a 4-chapter narrative campaign, in **Online Crew** (2–4 player cooperative multiplayer via room codes), or in local **Same Device** hotseat mode.
+Playable **Solo** through a 4-chapter narrative campaign, or in **Online Crew** (2–4 player cooperative multiplayer via room codes).
 
 ---
 
@@ -59,9 +59,6 @@ Experience humanity's step-by-step colonization of the South Pole:
 - Instant room creation and joining using **4-character room codes**.
 - Authoritative state synchronization powered by **Colyseus** and WebSockets.
 - Real-time multiplayer rover driving, EVA movements, synchronized module construction, and cooperative chapter voting.
-
-### 💻 Same Device Hotseat
-- Pass-and-play voting on a single keyboard to coordinate chapter objectives.
 
 ---
 

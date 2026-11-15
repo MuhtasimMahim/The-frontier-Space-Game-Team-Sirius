@@ -71,7 +71,7 @@ export const App: React.FC = () => {
       setQuality(world.quality);
 
       integration = new MultiplayerIntegration(mp.client);
-      integration.init(world, gameSim);
+      integration.init(world, gameSim, mp.client);
       integrationRef.current = integration;
       mp.setRemotePlayerManager(world.remotePlayerManager);
     }

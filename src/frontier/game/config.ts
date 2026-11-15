@@ -101,9 +101,9 @@ export const CONFIG = {
   SITE_SELECT_TIMEOUT: 30,
   DEFAULT_SITE_ID: 2,
 
-  // Start resources
+  // Start resources (Energy ≥ Habitat A cost so Chapter 1 stays fair after ice refining)
   START: {
-    energy: 50,
+    energy: 70,
     water: 25,
     food: 35,
   },

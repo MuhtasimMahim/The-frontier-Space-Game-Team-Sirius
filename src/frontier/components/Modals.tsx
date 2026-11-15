@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { CONFIG, type FactDef } from "../game/config";
 import { gameSim, type GameState } from "../game/simulation";
 import {
@@ -12,6 +12,7 @@ import {
   type StoryChapterDef,
 } from "../game/storyline";
 import { getChapter } from "../game/chapters";
+import { startIntroVideoPreload } from "../game/introVideoPreload";
 import { STORY_VIDEOS, getVideoForChapter } from "../game/storyVideos";
 import { StoryVideoModal } from "./StoryVideoModal";
 
@@ -186,10 +187,16 @@ const StoryBriefing: React.FC<{ state: GameState; def: StoryChapterDef }> = ({ s
 // Title Screen (Matches TitleUI.luau)
 export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
   const [showIntroVideo, setShowIntroVideo] = useState<boolean>(false);
-  const [pendingMode, setPendingMode] = useState<"solo" | "online" | "crew" | null>(null);
+  const [pendingMode, setPendingMode] = useState<"solo" | "online" | null>(null);
 
-  const startModeWithIntro = (mode: "solo" | "online" | "crew") => {
+  // Warm the first intro clip while the player reads the title (other videos unchanged)
+  useEffect(() => {
+    void startIntroVideoPreload();
+  }, []);
+
+  const startModeWithIntro = (mode: "solo" | "online") => {
     setPendingMode(mode);
+    void startIntroVideoPreload();
     setShowIntroVideo(true);
   };
 
@@ -225,7 +232,7 @@ export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
           {CONFIG.TEXTS.titleSubtitle}
         </p>
 
-        {/* Solo / Online Crew / Same-device vote / Resume */}
+        {/* Solo / Online Crew / Resume */}
         <div className="flex flex-wrap items-center gap-3 mt-2">
           <button
             onClick={() => startModeWithIntro("solo")}
@@ -243,20 +250,14 @@ export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
             <span>→</span>
           </button>
 
-          <button
-            onClick={() => startModeWithIntro("crew")}
-            className="px-5 h-14 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white font-bold text-sm tracking-wide shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-105 active:scale-95 uppercase"
-          >
-            <span>Same Device</span>
-          </button>
-
           {state.hasCheckpoint && state.checkpointInfo && (
             <button
               onClick={() => gameSim.resumeCheckpoint()}
               className="px-6 h-16 rounded-full bg-[#FFD166] hover:bg-[#f5c44f] text-[#0F2A3A] font-extrabold text-base tracking-wide shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-105 active:scale-95 uppercase"
             >
               <span>
-                Resume Day {state.checkpointInfo.day} ({state.checkpointInfo.siteName})
+                Resume Day {state.checkpointInfo.day} ·{" "}
+                {state.checkpointInfo.chapterLabel || state.checkpointInfo.siteName}
               </span>
             </button>
           )}
@@ -762,12 +763,25 @@ export const ResultUI: React.FC<{ state: GameState }> = ({ state }) => {
               </button>
             )}
 
+            {!isWon && (
+              <button
+                onClick={() => gameSim.retryCurrentChapter()}
+                className="w-full py-4 rounded-full bg-[#7EE0B8] hover:bg-[#68d4a7] text-[#0F2A3A] font-extrabold text-xl tracking-wide shadow-2xl transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 uppercase"
+              >
+                <span>Retry This Chapter</span>
+                <span>↺</span>
+              </button>
+            )}
             <button
               onClick={() => gameSim.restartGame()}
-              className="w-full py-4 rounded-full bg-[#7EE0B8] hover:bg-[#68d4a7] text-[#0F2A3A] font-extrabold text-xl tracking-wide shadow-2xl transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-95 uppercase"
+              className={`w-full rounded-full font-extrabold tracking-wide shadow-2xl transition-all cursor-pointer flex items-center justify-center gap-2 uppercase ${
+                isWon
+                  ? "py-4 bg-[#7EE0B8] hover:bg-[#68d4a7] text-[#0F2A3A] text-xl hover:scale-[1.02] active:scale-95"
+                  : "py-3 bg-white/10 hover:bg-white/20 text-white text-sm"
+              }`}
             >
-              <span>{CONFIG.TEXTS.restartLabel}</span>
-              <span>↺</span>
+              <span>{isWon ? CONFIG.TEXTS.restartLabel : "New Expedition (Sandbox)"}</span>
+              {isWon && <span>↺</span>}
             </button>
           </div>
         </div>

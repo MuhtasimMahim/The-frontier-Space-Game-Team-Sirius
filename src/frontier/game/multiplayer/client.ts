@@ -219,6 +219,67 @@ export class FrontierClient {
 
   // ── Internal room wiring ─────────────────────────────────────────────────
 
+  private schemaPlayerToRemote(sessionId: string, raw: Record<string, unknown>): RemotePlayer {
+    const vote = raw["vote"] ? String(raw["vote"]) : "";
+    const player: RemotePlayer = {
+      sessionId,
+      name: String(raw["name"] ?? "Astronaut"),
+      x: Number(raw["x"] ?? 0),
+      z: Number(raw["z"] ?? 0),
+      rotation: Number(raw["rotation"] ?? 0),
+      inRover: Boolean(raw["inRover"]),
+      color: String(raw["color"] ?? "#7EE0B8"),
+      seat: Number(raw["seat"] ?? 0),
+      ready: Boolean(raw["ready"]),
+      connected: raw["connected"] !== false,
+    };
+    if (vote) player.vote = vote;
+    return player;
+  }
+
+  private bindPlayerSchema(sessionId: string, playerSchema: unknown): void {
+    const src = playerSchema as {
+      sessionId?: string;
+      name?: string;
+      x?: number;
+      z?: number;
+      rotation?: number;
+      inRover?: boolean;
+      color?: string;
+      seat?: number;
+      ready?: boolean;
+      connected?: boolean;
+      vote?: string;
+      onChange?: (cb: (changes?: unknown) => void) => void;
+      listen?: (prop: string, cb: () => void) => void;
+    };
+    const read = (): RemotePlayer =>
+      this.schemaPlayerToRemote(sessionId, {
+        name: src.name,
+        x: src.x,
+        z: src.z,
+        rotation: src.rotation,
+        inRover: src.inRover,
+        color: src.color,
+        seat: src.seat,
+        ready: src.ready,
+        connected: src.connected,
+        vote: src.vote,
+      });
+
+    const emitMove = () => this.callbacks.onPlayerMove?.(read());
+    this.callbacks.onPlayerJoin?.(read());
+
+    // Prefer fine-grained listens so position patches always fire
+    if (typeof src.listen === "function") {
+      for (const prop of ["x", "z", "rotation", "inRover", "name", "ready", "vote", "connected"]) {
+        src.listen(prop, emitMove);
+      }
+    } else if (typeof src.onChange === "function") {
+      src.onChange(emitMove);
+    }
+  }
+
   private attachRoomHandlers(room: Room): void {
     this.room = room;
     this.lastRoomId = room.id;
@@ -230,41 +291,33 @@ export class FrontierClient {
       (window as unknown as { __frontierRoom?: Room }).__frontierRoom = room;
     }
 
-    // Room state change
+    // MapSchema listeners ONCE per room (not inside every onStateChange)
+    const players = (room.state as unknown as { players?: unknown })?.players as
+      | {
+          onAdd?: (cb: (player: unknown, key: string) => void) => void;
+          onRemove?: (cb: (player: unknown, key: string) => void) => void;
+          forEach?: (cb: (player: unknown, key: string) => void) => void;
+        }
+      | undefined;
+
+    if (players && typeof players.onAdd === "function") {
+      players.onAdd((player, key) => {
+        this.bindPlayerSchema(key, player);
+      });
+      players.onRemove?.((_player, key) => {
+        this.callbacks.onPlayerLeave?.(key);
+      });
+      // Seed existing seats (join mid-lobby / reconnect)
+      players.forEach?.((player, key) => {
+        this.bindPlayerSchema(key, player);
+      });
+    }
+
     room.onStateChange((state) => {
       this.callbacks.onStateChange?.(state);
-
-      // Listen for player mutations if state has players MapSchema
-      const players = (state as unknown as { players?: Map<string, unknown> })?.players;
-      if (
-        players &&
-        typeof (players as unknown as { onAdd?: (...args: unknown[]) => void }).onAdd === "function"
-      ) {
-        // Schema listeners if available
-        (
-          players as unknown as { onAdd: (cb: (player: RemotePlayer, key: string) => void) => void }
-        ).onAdd((player: RemotePlayer, _key: string) => {
-          this.callbacks.onPlayerJoin?.(player);
-          if (
-            typeof (player as unknown as { onChange?: (...args: unknown[]) => void }).onChange ===
-            "function"
-          ) {
-            (player as unknown as { onChange: (cb: () => void) => void }).onChange(() => {
-              this.callbacks.onPlayerMove?.(player);
-            });
-          }
-        });
-        (
-          players as unknown as {
-            onRemove: (cb: (player: RemotePlayer, key: string) => void) => void;
-          }
-        ).onRemove((_player: RemotePlayer, key: string) => {
-          this.callbacks.onPlayerLeave?.(key);
-        });
-      }
     });
 
-    // Custom broadcast messages
+    // Custom broadcast messages (backup join/leave if schema add is missed)
     room.onMessage("playerJoin", (data: RemotePlayer) => {
       this.callbacks.onPlayerJoin?.(data);
     });

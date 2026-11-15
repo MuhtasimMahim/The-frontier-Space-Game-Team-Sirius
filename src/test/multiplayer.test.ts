@@ -326,6 +326,8 @@ describe("Multiplayer Integration Test Suite", () => {
   describe("6. MultiplayerIntegration Layer", () => {
     let mockSim: {
       state: {
+        phase?: string;
+        menuOpen?: boolean;
         player: { x: number; z: number; rotation: number; inRover: boolean };
         rover: { x: number; z: number; rotation: number };
         iceSites: { id: number; deposit: number }[];
@@ -349,6 +351,8 @@ describe("Multiplayer Integration Test Suite", () => {
 
       mockSim = {
         state: {
+          phase: "playing",
+          menuOpen: false,
           player: { x: 5, z: 10, rotation: 0.5, inRover: false },
           rover: { x: 50, z: 60, rotation: 1.2 },
           iceSites: [{ id: 1, deposit: 100 }],
@@ -370,8 +374,13 @@ describe("Multiplayer Integration Test Suite", () => {
       };
 
       integration = new MultiplayerIntegration(client);
+      // Pretend the shared client is already in a Colyseus room
+      Object.defineProperty(client, "currentRoom", {
+        get: () => ({ id: "test-room" }),
+        configurable: true,
+      });
       // @ts-expect-error Mock world and simulation
-      integration.init(mockWorld, mockSim);
+      integration.init(mockWorld, mockSim, client);
     });
 
     afterEach(() => {
@@ -389,6 +398,17 @@ describe("Multiplayer Integration Test Suite", () => {
       mockSim.state.player.inRover = true;
       integration.sendLocalPosition();
       expect(moveSpy).toHaveBeenCalledWith(50, 60, 1.2, true);
+    });
+
+    it("does not send moves outside an active playing session", () => {
+      const moveSpy = vi.spyOn(client, "sendMove");
+      mockSim.state.phase = "title";
+      integration.sendLocalPosition();
+      expect(moveSpy).not.toHaveBeenCalled();
+      mockSim.state.phase = "playing";
+      mockSim.state.menuOpen = true;
+      integration.sendLocalPosition();
+      expect(moveSpy).not.toHaveBeenCalled();
     });
 
     it("handles incoming game action messages and invokes simulation methods", () => {

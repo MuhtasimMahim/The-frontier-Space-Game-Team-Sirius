@@ -3,7 +3,7 @@ export type ChapterId = "chapter1" | "chapter2" | "chapter3" | "chapter4" | "ful
 
 export type ChapterStatus = "playable" | "coming_soon";
 
-/** solo = single player; crew = same-device vote; online = Colyseus room co-op */
+/** solo = single player; crew = local vote helper (unused on title); online = Colyseus room co-op */
 export type PlayMode = "solo" | "crew" | "online";
 
 export interface ChapterDef {

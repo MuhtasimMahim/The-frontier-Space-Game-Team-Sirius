@@ -6,6 +6,7 @@ import {
   type CheckpointData,
 } from "./checkpoint";
 import {
+  CHAPTERS,
   clampCrewSize,
   emptyCrewVotes,
   getChapter,
@@ -109,6 +110,15 @@ function loadHall(): HallEntry[] {
   }
 }
 
+/** Short label for Resume buttons (chapter identity, not only site name). */
+export function chapterLabelForMode(mode: string): string {
+  if (mode === "full") return "Sandbox";
+  const ch = CHAPTERS.find((c) => c.id === mode || c.missionMode === mode);
+  if (ch?.number != null) return `Ch.${ch.number} ${ch.campName}`;
+  if (mode === "chapter1") return "Ch.1 Camp Sirius";
+  return mode;
+}
+
 export type DockState = "empty" | "docked" | "charging" | "full";
 export type OxygenSource = "none" | "lander" | "airlock" | "rover";
 export type MissionMode = "chapter1" | "chapter2" | "chapter3" | "chapter4" | "full";
@@ -197,7 +207,12 @@ export interface GameState {
 
   // Checkpoints
   hasCheckpoint: boolean;
-  checkpointInfo: { day: number; siteName: string; savedAt: string } | null;
+  checkpointInfo: {
+    day: number;
+    siteName: string;
+    savedAt: string;
+    chapterLabel: string;
+  } | null;
 
   // Modules
   modules: Record<ModuleId, ModuleState>;
@@ -447,7 +462,12 @@ export class SimulationManager {
 
       hasCheckpoint: Boolean(savedCp),
       checkpointInfo: savedCp
-        ? { day: savedCp.day, siteName: cpSite, savedAt: savedCp.savedAt }
+        ? {
+            day: savedCp.day,
+            siteName: cpSite,
+            savedAt: savedCp.savedAt,
+            chapterLabel: chapterLabelForMode(savedCp.missionMode),
+          }
         : null,
 
       modules,
@@ -561,7 +581,7 @@ export class SimulationManager {
     this.notify();
   }
 
-  /** Opens the chapter list for solo play, same-device crew voting, or online lobby. */
+  /** Opens the chapter list for solo play or the online lobby. */
   public openChapterSelect(mode: PlayMode) {
     sound.playClick();
     this.state.playMode = mode;
@@ -683,6 +703,18 @@ export class SimulationManager {
     st.networkOpen = false;
     st.eventBanner = null;
     st.activeStorm = false;
+    // Full tank so long survey / pack runs don't strand a new player immediately
+    st.rover.battery = st.rover.batteryMax;
+    st.rover.damage = 0;
+    st.rover.waterTank = 0;
+    st.rover.x = DOCK.x;
+    st.rover.z = DOCK.z;
+    st.player.inRover = false;
+    st.player.x = 0;
+    st.player.z = 6;
+    st.player.oxygen = CONFIG.OXYGEN.max;
+    st.roverTeleport += 1;
+    st.playerTeleport += 1;
     st.activeTip = def.steps[0]?.tip ?? null;
     st.phase = "briefing";
     sound.speak(
@@ -1177,6 +1209,9 @@ export class SimulationManager {
       this.onDefeat("60-day Artemis mission window expired.");
       return;
     }
+
+    // Ch.1: solar refill may unlock Habitat build after water is already banked
+    if (this.state.stage === "unload") this.tryAdvanceChapter1AfterWater();
   }
 
   private onOxygenFailure() {
@@ -1360,7 +1395,29 @@ export class SimulationManager {
   }
 
   public installPanel() {
-    if (this.state.panelsInstalledToday >= CONFIG.PANELS_PER_DAY) {
+    // Chapter 1: finish orientation before the first panels so kids learn the map layout
+    if (
+      this.state.missionMode === "chapter1" &&
+      !this.state.chapter1Completed &&
+      !this.state.siteOriented
+    ) {
+      sound.playWarning();
+      this.addToast(
+        "Check the Lander Orientation Console (glowing ring) first — then deploy solar panels.",
+        "warn",
+      );
+      this.showTip(
+        "orient_first",
+        "Walk to the glowing ring by the lander and press E. That wakes your radar so you can find the solar field and ice.",
+      );
+      return;
+    }
+    // First three starter panels in Chapter 1 ignore the daily cap (10s days feel broken in the tutorial)
+    const starterFree =
+      this.state.missionMode === "chapter1" &&
+      !this.state.chapter1Completed &&
+      this.state.panelsInstalled < 3;
+    if (!starterFree && this.state.panelsInstalledToday >= CONFIG.PANELS_PER_DAY) {
       sound.playWarning();
       this.addToast(
         `Daily panel deployment limit (${CONFIG.PANELS_PER_DAY}) reached. Resume tomorrow.`,
@@ -1375,7 +1432,7 @@ export class SimulationManager {
 
     sound.playServo();
     this.state.panelsInstalled += 1;
-    this.state.panelsInstalledToday += 1;
+    if (!starterFree) this.state.panelsInstalledToday += 1;
     this.state.stats.panelsBuilt += 1;
     this.addToast(
       `Solar panel array deployed (${this.state.panelsInstalled}/${CONFIG.PANELS_TOTAL})`,
@@ -1389,9 +1446,8 @@ export class SimulationManager {
 
     if (
       remainingStarterPanels(this.state.panelsInstalled) === 0 &&
-      (this.state.stage === "panels" || this.state.stage === "orient")
+      this.state.stage === "panels"
     ) {
-      this.state.siteOriented = true;
       if (!this.state.solarAligned) {
         this.state.stage = "align_panels";
         sound.speak(
@@ -1467,7 +1523,15 @@ export class SimulationManager {
 
     this.emitNet({ type: "mine_ice", siteId: String(siteId) });
     sound.playIceDrill();
-    const harvest = Math.min(space, site.deposit);
+    // Chapter 1 first trip: cap haul so refining won't drain energy below Habitat A's 60E cost
+    let harvest = Math.min(space, site.deposit);
+    if (
+      this.state.missionMode === "chapter1" &&
+      !this.state.chapter1Completed &&
+      this.state.stage === "find_ice"
+    ) {
+      harvest = Math.min(harvest, 25);
+    }
     site.deposit -= harvest;
     this.state.rover.waterTank += harvest;
     this.addToast(
@@ -1535,22 +1599,57 @@ export class SimulationManager {
       this.addToast(`Refined and unloaded ${water}W water!`, "good");
 
       if (this.state.stage === "unload") {
-        this.state.stage = "build_A";
-        sound.speak("Sufficient water stored. Proceed with Habitat A construction.");
-        this.showTip(
-          "power_decision",
-          "Habitat A needs 60E and 20W. Refining more water right now spends 0.35E per W—save 60E for Habitat A first!",
-        );
+        this.tryAdvanceChapter1AfterWater();
       }
       this.onStoryRefined();
       this.saveCheckpoint(true);
     }
+    // Partial refine may still reach the Chapter 1 water goal
+    if (this.state.stage === "unload") this.tryAdvanceChapter1AfterWater();
     this.notify();
+  }
+
+  /** Ch.1: only open Habitat build once kids have ≥20W and ≥60E (matches briefing). */
+  private tryAdvanceChapter1AfterWater() {
+    if (this.state.stage !== "unload") return;
+    if (this.state.missionMode === "chapter1" && !this.state.chapter1Completed) {
+      if (this.state.water < 20) {
+        this.showTip(
+          "need_more_water",
+          "Habitat A needs 20 water. Drive back out for another small ice load if you are short.",
+        );
+        return;
+      }
+      if (this.state.energy < 60) {
+        this.showTip(
+          "wait_for_solar",
+          `You have enough water! Wait for solar power to climb to 60 Energy (now ${Math.floor(this.state.energy)}E), then build Habitat A.`,
+        );
+        this.addToast(
+          `Water ready (${Math.floor(this.state.water)}W). Need 60E for Habitat A — wait for sunrise power.`,
+          "info",
+        );
+        return;
+      }
+    }
+    this.state.stage = "build_A";
+    sound.speak("Sufficient water and power stored. Proceed with Habitat A construction.");
+    this.showTip(
+      "power_decision",
+      "Habitat A needs 60 Energy and 20 Water. Press E at the Habitat foundation pad!",
+    );
   }
 
   private onStoryRefined() {
     const def = this.storyDef();
-    if (def && currentStep(def, this.state.story)?.kind === "refine") this.advanceStory();
+    // Only advance once the tank is empty — partial refine (low energy) must finish later
+    if (
+      def &&
+      currentStep(def, this.state.story)?.kind === "refine" &&
+      this.state.rover.waterTank <= 0
+    ) {
+      this.advanceStory();
+    }
   }
 
   public repairRover() {
@@ -1829,6 +1928,10 @@ export class SimulationManager {
         edu: "Get inside Habitat A's airlock. Its walls shield you from solar particles.",
       };
       sound.playWarning();
+      this.addToast(
+        "DONKI alert! Leave the rover, open Habitat A's airlock (E), and stay in the doorway.",
+        "warn",
+      );
     }
     this.saveCheckpoint(true);
     this.notify();
@@ -1902,6 +2005,16 @@ export class SimulationManager {
         s.packTimer = 0;
         s.packsMade += 1;
         sound.playChargeFull();
+        this.addToast(
+          `Energy pack charged at Helios Tower (${s.packsMade}/${STORY.PACK_TOTAL}). Drive over and press E to load.`,
+          "good",
+        );
+        if (s.packsMade === 1) {
+          this.showTip(
+            "first_pack",
+            "Board the rover if you are on foot. At the Solar Tower press E to load up to 2 packs, then drive to the Cargo Hopper pad to unload.",
+          );
+        }
       }
       return;
     }
@@ -2428,11 +2541,12 @@ export class SimulationManager {
         day: data.day,
         siteName: this.state.selectedSite.name,
         savedAt: data.savedAt,
+        chapterLabel: chapterLabelForMode(this.state.missionMode),
       };
       if (!silent) {
         sound.playClick();
         this.addToast(
-          `Checkpoint saved (Day ${data.day} · ${this.state.selectedSite.name}).`,
+          `Checkpoint saved (Day ${data.day} · ${chapterLabelForMode(this.state.missionMode)}).`,
           "good",
         );
       }
@@ -2535,7 +2649,14 @@ export class SimulationManager {
       fresh.selectedChapterId = "chapter1";
     }
     fresh.hasCheckpoint = true;
-    fresh.checkpointInfo = { day: cp.day, siteName: site.name, savedAt: cp.savedAt };
+    fresh.checkpointInfo = {
+      day: cp.day,
+      siteName: site.name,
+      savedAt: cp.savedAt,
+      chapterLabel: chapterLabelForMode(cp.missionMode),
+    };
+    fresh.selectedChapterId =
+      (cp.missionMode as ChapterId) === "full" ? "full" : (cp.missionMode as ChapterId);
     fresh.roverTeleport = (this.state.roverTeleport || 0) + 1;
     fresh.playerTeleport = (this.state.playerTeleport || 0) + 1;
     fresh.activeTip = null;
@@ -2559,6 +2680,28 @@ export class SimulationManager {
     this.doorCloseTimer = 0;
     this.state = this.getInitialState(seed);
     this.startGame();
+  }
+
+  /** After a loss: retry the same chapter instead of dumping into sandbox site select. */
+  public retryCurrentChapter() {
+    const id =
+      this.state.selectedChapterId ??
+      (this.state.missionMode !== "full" ? (this.state.missionMode as ChapterId) : null);
+    sound.playClick();
+    this.pauseLoop();
+    this.clearAllTimeouts();
+    this.factQueue = [];
+    this.factTimer = 0;
+    this.factGap = 99;
+    this.breathTimer = 0;
+    this.doorCloseTimer = 0;
+    const seed = this.state.seed;
+    this.state = this.getInitialState(seed);
+    if (id && id !== "full") {
+      this.enterChapter(id);
+    } else {
+      this.startGame();
+    }
   }
 
   /** Opens the in-mission pause / exit menu (Esc). Freezes the day timer. */

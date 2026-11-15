@@ -59,6 +59,7 @@ import {
   STORY_CHAPTERS,
   STORY_CHAPTER_IDS,
   chapterRoute,
+  currentStep,
   type StoryChapterDef,
 } from "./storyline";
 import { RemotePlayerManager } from "./multiplayer/remotePlayers";
@@ -2266,29 +2267,45 @@ export class PlayCanvasLunarWorld {
             "e",
             RULES.ICE_HOLD,
             `Crater Ice (${ice.deposit}W Remaining)`,
-            "Hold to Harvest Ice",
+            "Hold E to Harvest Ice",
             () => gameSim.fillIce(ice.id),
           );
         }
       }
       if (Math.hypot(st.rover.x - DOCK.x, st.rover.z - DOCK.z) < 16 && st.rover.waterTank > 0)
-        return A("e", 0, "Water Refinery Tank", `Unload & Process (${st.rover.waterTank}W)`, () =>
-          gameSim.unloadWater(),
+        return A(
+          "e",
+          0,
+          story?.id === "chapter4" && currentStep(story, st.story)?.kind === "refine"
+            ? `Ice Refinery (${st.rover.waterTank}W)`
+            : "Water Refinery Tank",
+          story?.id === "chapter4" && currentStep(story, st.story)?.kind === "refine"
+            ? `Press E to Refine Ice → Water (${st.rover.waterTank}W)`
+            : `Unload & Process (${st.rover.waterTank}W)`,
+          () => gameSim.unloadWater(),
         );
       if (storyInfo) return storyInfo;
       if (Math.hypot(st.rover.x - DOCK.x, st.rover.z - DOCK.z) < CONFIG.ROVER.chargeRadius) {
         if (st.dockState === "charging") {
           return info(
             "Charging Dock",
-            `Charging battery (${Math.round(st.rover.battery)}/${st.rover.batteryMax}E) · Space to exit`,
+            `Charging (${Math.round(st.rover.battery)}/${st.rover.batteryMax}E) · Space to exit`,
           );
         }
-        if (
-          st.dockState === "docked" &&
-          st.energy <= 0 &&
-          st.rover.battery < st.rover.batteryMax - 0.5
-        ) {
-          return info("Charging Dock", "Base energy empty — deploy solar arrays to charge");
+        if (st.dockState === "docked" && st.rover.battery < st.rover.batteryMax - 0.5) {
+          if (st.energy <= 0) {
+            return info("Charging Dock", "Base energy empty — deploy solar arrays to charge");
+          }
+          if (Math.abs(st.rover.speed) >= 0.5) {
+            return info(
+              "Charging Dock",
+              "Stop moving (or Space to exit) so the dock can charge your battery",
+            );
+          }
+          return info(
+            "Charging Dock",
+            "Parked — charging will start · Space to exit and walk",
+          );
         }
       }
       return null;
@@ -2336,16 +2353,40 @@ export class PlayCanvasLunarWorld {
       if (st.airlock.open)
         return info(
           "Habitat Airlock",
-          st.player.insideAirlock ? "Inside: refilling oxygen" : "Door open",
+          st.player.insideAirlock
+            ? story?.id === "chapter3" && st.story.stormTimer > 0
+              ? "Sheltered — stay here until the storm ends"
+              : "Inside: refilling oxygen"
+            : story?.id === "chapter3" && (st.story.stormCountdown > 0 || st.story.stormTimer > 0)
+              ? "Walk into the doorway and stay for shelter"
+              : "Door open",
         );
       if (st.airlock.opening > 0)
         return info(
           "Habitat Airlock",
           `Cycling... ${Math.ceil(RULES.AIRLOCK_SECONDS - st.airlock.opening)}s`,
         );
-      return A("e", 0, "Habitat Airlock", "Open Airlock", () => gameSim.openAirlock());
+      return A(
+        "e",
+        0,
+        "Habitat Airlock",
+        story?.id === "chapter3" && (st.story.stormCountdown > 0 || st.story.stormTimer > 0)
+          ? "Open Airlock — shelter from the storm!"
+          : "Open Airlock",
+        () => gameSim.openAirlock(),
+      );
     }
     if (storyInfo) return storyInfo;
+    if (story?.id === "chapter4" && currentStep(story, st.story)?.kind === "harvest") {
+      for (const ice of st.iceSites) {
+        if (Math.hypot(px - ice.x, pz - ice.z) < 22 && ice.deposit > 0) {
+          return info(
+            "Crater Ice",
+            "Board the rover — harvest ice from the driver's seat only (stay warm & O2-safe)",
+          );
+        }
+      }
+    }
     // Everything below exists only at Camp Sirius (Chapter 1 and the sandbox)
     if (story) return null;
     if (Math.hypot(px - ORIENT_CONSOLE.x, pz - ORIENT_CONSOLE.z) < 4.2) {

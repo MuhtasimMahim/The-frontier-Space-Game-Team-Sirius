@@ -266,6 +266,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         actionName: "Hold E to Launch to Camp Sirius",
         role: "Flight Controller",
         voice: "All four energy packs are aboard. Walk to the hopper console and launch.",
+        tip: "Leave the rover (Space), walk to the glowing Cargo Hopper console near the pad, and Hold E to launch.",
       },
     ],
     scienceNote:
@@ -310,7 +311,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         actionName: "",
         role: "Rover Driver",
         voice: "Welcome to Camp Relay. Drive the rover up the massif to the summit pad.",
-        tip: "Climb at a steady speed. The rover keeps your suit topped up with oxygen while you drive.",
+        tip: "Board the rover (E) and follow the beacon uphill. Climb steadily — walking the massif empties suit oxygen.",
       },
       {
         id: "r_antenna",
@@ -330,6 +331,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         role: "Engineer",
         voice:
           "Summit reached. Earth is in view from up here. Step out and assemble the main antenna.",
+        tip: "Press Space to leave the rover on the Summit Pad, then Hold E twice (15E each) to build the antenna.",
       },
       {
         id: "r_aim",
@@ -344,7 +346,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         actionName: "Press E to Aim at Earth",
         role: "Comms Officer",
         voice: "Antenna assembled. Point the dish at Earth and lock the signal.",
-        tip: "Look for the blue Earth low in the sky. Line the dish up with it: the closer you aim, the stronger the signal.",
+        tip: "On foot at the dish: Press E to aim. A/D turns, W/S tilts. Watch the signal % — Hold E when it hits 90%+.",
         factId: "ch3_malapert",
       },
       {
@@ -361,6 +363,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         stages: [{ name: "Relay Station", structure: "relay", energy: 20 }],
         role: "Engineer",
         voice: "Earth link locked! Head back to camp and connect the relay station.",
+        tip: "Board the rover, follow the beacon downhill to camp, step out at the glowing Relay pad, Hold E (20E).",
       },
       {
         id: "r_storm",
@@ -376,6 +379,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         role: "Commander",
         voice:
           "Warning! The relay just received a DONKI space weather alert. A solar storm arrives in forty-five seconds. Get inside the habitat airlock!",
+        tip: "Leave the rover (Space). At Habitat A's golden door press E, wait ~6s for the cycle, stand in the doorway until the storm ends.",
         factId: "ch3_storm",
       },
     ],
@@ -423,7 +427,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         role: "Scientist",
         voice:
           "Welcome to Camp Horizon on the rim of Cabeus. Set up the survey station at the overlook.",
-        tip: "The dark bowl ahead is a permanently shadowed crater. Sunlight never reaches its floor.",
+        tip: "Board the rover, follow the beacon to the Rim Overlook, Press Space, then Hold E (15E).",
       },
       {
         id: "z_radar",
@@ -440,6 +444,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         effect: "reveal_ice",
         role: "Scientist",
         voice: "Survey station online. Now deploy the ground radar to look for buried ice.",
+        tip: "Follow the beacon to the Ground Radar pad. Step out and Hold E (20E) — it reveals three ice deposits.",
         factId: "ch4_psr",
       },
       {
@@ -458,7 +463,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         role: "Engineer",
         voice:
           "Radar found three ice deposits in the dark. Drive the rover onto the upgrade bay for lights and heaters.",
-        tip: "Without heaters, rover batteries and wheels freeze in shadowed craters. The upgrade also adds battery capacity.",
+        tip: "Stay in the rover. Drive onto the glowing Upgrade Bay near camp and Hold E (20E) for lights, heaters, and more battery.",
       },
       {
         id: "z_ice",
@@ -472,6 +477,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         actionName: "",
         role: "Rover Driver",
         voice: "Rover upgraded. Headlights on. Drive into the crater and harvest the ice.",
+        tip: "Stay in the rover — the crater floor has no sunlight. Follow the beacon to each cyan ice site and Hold E. Collect all 3.",
       },
       {
         id: "z_refine",
@@ -486,6 +492,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         actionName: "",
         role: "Engineer",
         voice: "Ice collected. Bring it back to the refinery at the camp dock.",
+        tip: "Drive the rover onto the H dock at camp and press E to refine ice into water (uses a little Energy).",
       },
       {
         id: "z_launch",
@@ -500,6 +507,7 @@ export const STORY_CHAPTERS: Record<StoryChapterId, StoryChapterDef> = {
         actionName: "Hold E to Launch Water to the Network",
         role: "Flight Controller",
         voice: "Water refined and loaded. Walk to the hopper console and launch it to the network.",
+        tip: "Leave the rover (Space), walk to the glowing Cargo Hopper console near the pad, and Hold E to launch.",
       },
     ],
     scienceNote:
@@ -734,8 +742,13 @@ export function storyActionAt(
       return null;
     }
     case "aim": {
-      if (!step.target || ctx.inRover || story.aiming) return null;
+      if (!step.target || story.aiming) return null;
       const d = dist(me, step.target);
+      if (ctx.inRover) {
+        if (d < step.radius + 8)
+          return info(step.objectName, "Press Space to step out, then press E to aim", d);
+        return null;
+      }
       if (d >= step.radius) return null;
       return act("start_aim", 0, step.objectName, step.actionName, d);
     }

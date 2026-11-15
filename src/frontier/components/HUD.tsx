@@ -10,6 +10,7 @@ import {
   gameSim,
   type GameState,
 } from "../game/simulation";
+import { coachForState } from "../game/coach";
 import { projectRadarBlip, remainingStarterPanels } from "../game/rules";
 import {
   STORY,
@@ -132,6 +133,7 @@ const AimOverlay: React.FC<{ signal: number }> = ({ signal }) => {
 
 export const HUD: React.FC<{ state: GameState }> = ({ state }) => {
   const story = isStoryChapter(state.missionMode) ? STORY_CHAPTERS[state.missionMode] : null;
+  const coach = coachForState(state);
   // Current mission objective text
   let missionText = "";
   switch (state.stage) {
@@ -140,8 +142,10 @@ export const HUD: React.FC<{ state: GameState }> = ({ state }) => {
       break;
     case "panels": {
       const needed = remainingStarterPanels(state.panelsInstalled);
+      const ch1Starter =
+        state.missionMode === "chapter1" && !state.chapter1Completed && state.panelsInstalled < 3;
       missionText =
-        state.panelsInstalledToday >= CONFIG.PANELS_PER_DAY
+        !ch1Starter && state.panelsInstalledToday >= CONFIG.PANELS_PER_DAY
           ? `Daily panel limit (${CONFIG.PANELS_PER_DAY}) reached — wait for sunrise to deploy ${needed} more`
           : CONFIG.MISSION_TEXTS.installPanels.replace("{n}", `${needed}`);
       break;
@@ -897,10 +901,46 @@ export const HUD: React.FC<{ state: GameState }> = ({ state }) => {
       </div>
 
       {/* ============================================================== */}
-      {/* EDUCATIONAL NASA FACT CARD                                      */}
+      {/* MISSION COACH + TIP (bottom right, Luna theme)                  */}
       {/* ============================================================== */}
-      {/* TIP CARD + toggles (bottom right) */}
       <div className="absolute right-4 bottom-14 w-[320px] flex flex-col gap-1.5 pointer-events-auto">
+        {coach && state.showTips && (
+          <div
+            className="rounded-[12px] p-3 border border-white/10 shadow-xl text-white flex flex-col gap-2"
+            style={{ backgroundColor: UI_COLORS.panelAlpha }}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className="text-[10px] font-extrabold tracking-widest uppercase px-2 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: "rgba(126, 224, 184, 0.2)",
+                  color: coach.accent || UI_COLORS.luna.mint,
+                  border: `1px solid ${coach.accent || UI_COLORS.luna.mint}66`,
+                }}
+              >
+                Mission Coach
+              </span>
+            </div>
+            <div className="text-[15px] font-black leading-tight" style={{ color: "#FFFFFF" }}>
+              {coach.goal}
+            </div>
+            <div className="text-[13px] leading-snug" style={{ color: UI_COLORS.luna.soft }}>
+              <span className="font-bold" style={{ color: UI_COLORS.luna.sky }}>
+                Do this:{" "}
+              </span>
+              {coach.doThis}
+            </div>
+            <div
+              className="text-[12px] leading-snug pt-1 border-t border-white/10"
+              style={{ color: UI_COLORS.luna.label }}
+            >
+              <span className="font-bold" style={{ color: UI_COLORS.luna.gold }}>
+                Why:{" "}
+              </span>
+              {coach.why}
+            </div>
+          </div>
+        )}
         {state.activeTip && state.showTips && (
           <div
             className="rounded-[10px] p-3 border border-white/10 shadow-xl text-[13px] text-white flex gap-2"

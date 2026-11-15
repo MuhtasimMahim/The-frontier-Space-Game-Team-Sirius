@@ -48,6 +48,7 @@ export class MultiplayerIntegration {
 
     if (client) {
       this.client = client;
+      this.isOwnClient = false;
     }
 
     // Attach remotePlayerManager and stormController from world if available
@@ -74,7 +75,9 @@ export class MultiplayerIntegration {
       this.cleanupCallbacks();
     }
     this.client = client;
+    this.isOwnClient = false;
     this.setupClientSubscriptions();
+    this.startPositionSync();
   }
 
   /**
@@ -176,8 +179,12 @@ export class MultiplayerIntegration {
    */
   public sendLocalPosition(): void {
     if (this.isDestroyed || !this.sim || !this.client) return;
+    // Only broadcast when this instance owns the room-connected client
+    if (this.isOwnClient && !this.client.currentRoom) return;
+    if (!this.client.currentRoom) return;
     const state = this.sim.state;
     if (!state || !state.player) return;
+    if (state.phase !== "playing" || state.menuOpen) return;
 
     const inRover = Boolean(state.player.inRover);
     const x = inRover ? state.rover.x : state.player.x;

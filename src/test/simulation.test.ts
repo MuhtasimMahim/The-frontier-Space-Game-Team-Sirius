@@ -157,6 +157,26 @@ describe("Phase 1 simulation regressions", () => {
     }
   });
 
+  it("Chapter 1 blocks panels until orientation and frees the first three from the daily cap", () => {
+    const sim = makePlayingSim();
+    sim.state.missionMode = "chapter1";
+    sim.state.chapter1Completed = false;
+    sim.state.siteOriented = false;
+    sim.state.stage = "orient";
+    sim.state.panelsInstalled = 0;
+    sim.installPanel();
+    expect(sim.state.panelsInstalled).toBe(0);
+
+    sim.completeOrientation();
+    expect(sim.state.siteOriented).toBe(true);
+    sim.state.panelsInstalledToday = 3;
+    sim.installPanel();
+    expect(sim.state.panelsInstalled).toBe(1);
+    sim.installPanel();
+    sim.installPanel();
+    expect(sim.state.panelsInstalled).toBe(3);
+  });
+
   it("exiting the rover parks it in place and boarding requires walking back", () => {
     const sim = makePlayingSim();
     sim.state.rover.x = 120;

@@ -119,6 +119,7 @@ export function useMultiplayer(options: UseMultiplayerOptions = {}): UseMultipla
   const [currentVote, setCurrentVote] = useState<string | null>(null);
 
   const clientRef = useRef<FrontierClient | null>(null);
+  const [clientInstance, setClientInstance] = useState<FrontierClient | null>(null);
   const remoteManagerRef = useRef<RemotePlayerManager | null>(initialRemoteManager);
   const pingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onActionRef = useRef(onAction);
@@ -132,76 +133,106 @@ export function useMultiplayer(options: UseMultiplayerOptions = {}): UseMultipla
 
   const setRemotePlayerManager = useCallback((mgr: RemotePlayerManager | null) => {
     remoteManagerRef.current = mgr;
-  }, []);
-
-  const syncPlayersFromState = useCallback((state: unknown) => {
-    const map = (state as { players?: { forEach: (cb: (v: unknown, k: string) => void) => void } })
-      ?.players;
-    if (!map || typeof map.forEach !== "function") return;
-
-    const next: RemotePlayer[] = [];
-    const nextVotes: Record<string, string> = {};
-    map.forEach((raw, key) => {
-      // Colyseus Schema fields are getters — copy into a plain bag before reading
-      const src = raw as {
-        sessionId?: string;
-        name?: string;
-        x?: number;
-        z?: number;
-        rotation?: number;
-        inRover?: boolean;
-        color?: string;
-        seat?: number;
-        ready?: boolean;
-        connected?: boolean;
-        vote?: string;
-      };
-      const bag: Record<string, unknown> = {
-        name: src.name,
-        x: src.x,
-        z: src.z,
-        rotation: src.rotation,
-        inRover: src.inRover,
-        color: src.color,
-        seat: src.seat,
-        ready: src.ready,
-        connected: src.connected,
-        vote: src.vote,
-      };
-      const p = playerFromSchema(key, bag);
-      next.push(p);
-      if (p.vote) nextVotes[p.sessionId] = p.vote;
-    });
-    next.sort((a, b) => a.seat - b.seat);
-    setPlayers(next);
-    setVotes(nextVotes);
-
+    // Re-seed 3D avatars from latest HUD player list when the world remounts
     const sid = clientRef.current?.sessionId;
-    if (sid) {
-      const me = next.find((p) => p.sessionId === sid);
-      setCurrentVote(me?.vote ?? null);
+    if (mgr && sid) {
+      setPlayers((prev) => {
+        for (const p of prev) {
+          if (p.sessionId === sid) continue;
+          if (!mgr.getPlayer(p.sessionId)) {
+            mgr.addPlayer(p.sessionId, p.name, p.color, p.seat);
+          }
+          mgr.updatePlayer(p.sessionId, p.x, p.z, p.rotation, p.inRover);
+        }
+        return prev;
+      });
     }
   }, []);
+
+  const syncRemoteAvatars = useCallback((list: RemotePlayer[]) => {
+    const mgr = remoteManagerRef.current;
+    const sid = clientRef.current?.sessionId;
+    if (!mgr || !sid) return;
+    const remoteIds = new Set<string>();
+    for (const p of list) {
+      if (p.sessionId === sid) continue;
+      remoteIds.add(p.sessionId);
+      if (!mgr.getPlayer(p.sessionId)) {
+        mgr.addPlayer(p.sessionId, p.name, p.color, p.seat);
+      }
+      mgr.updatePlayer(p.sessionId, p.x, p.z, p.rotation, p.inRover);
+    }
+    for (const existing of mgr.getAll()) {
+      if (!remoteIds.has(existing.sessionId)) {
+        mgr.removePlayer(existing.sessionId);
+      }
+    }
+  }, []);
+
+  const syncPlayersFromState = useCallback(
+    (state: unknown) => {
+      const map = (state as { players?: { forEach: (cb: (v: unknown, k: string) => void) => void } })
+        ?.players;
+      if (!map || typeof map.forEach !== "function") return;
+
+      const next: RemotePlayer[] = [];
+      const nextVotes: Record<string, string> = {};
+      map.forEach((raw, key) => {
+        // Colyseus Schema fields are getters — copy into a plain bag before reading
+        const src = raw as {
+          sessionId?: string;
+          name?: string;
+          x?: number;
+          z?: number;
+          rotation?: number;
+          inRover?: boolean;
+          color?: string;
+          seat?: number;
+          ready?: boolean;
+          connected?: boolean;
+          vote?: string;
+        };
+        const bag: Record<string, unknown> = {
+          name: src.name,
+          x: src.x,
+          z: src.z,
+          rotation: src.rotation,
+          inRover: src.inRover,
+          color: src.color,
+          seat: src.seat,
+          ready: src.ready,
+          connected: src.connected,
+          vote: src.vote,
+        };
+        const p = playerFromSchema(key, bag);
+        next.push(p);
+        if (p.vote) nextVotes[p.sessionId] = p.vote;
+      });
+      next.sort((a, b) => a.seat - b.seat);
+      setPlayers(next);
+      setVotes(nextVotes);
+      syncRemoteAvatars(next);
+
+      const sid = clientRef.current?.sessionId;
+      if (sid) {
+        const me = next.find((p) => p.sessionId === sid);
+        setCurrentVote(me?.vote ?? null);
+      }
+    },
+    [syncRemoteAvatars],
+  );
 
   useEffect(() => {
     const client = new FrontierClient({
       onPlayerJoin: (player: RemotePlayer) => {
         setPlayers((prev) => {
           const exists = prev.some((p) => p.sessionId === player.sessionId);
-          if (exists) {
-            return prev.map((p) => (p.sessionId === player.sessionId ? { ...p, ...player } : p));
-          }
-          return [...prev, player].sort((a, b) => a.seat - b.seat);
+          const next = exists
+            ? prev.map((p) => (p.sessionId === player.sessionId ? { ...p, ...player } : p))
+            : [...prev, player].sort((a, b) => a.seat - b.seat);
+          syncRemoteAvatars(next);
+          return next;
         });
-
-        if (remoteManagerRef.current && player.sessionId !== clientRef.current?.sessionId) {
-          remoteManagerRef.current.addPlayer(
-            player.sessionId,
-            player.name,
-            player.color,
-            player.seat,
-          );
-        }
       },
 
       onPlayerLeave: (leavingSessionId: string) => {
@@ -215,18 +246,27 @@ export function useMultiplayer(options: UseMultiplayerOptions = {}): UseMultipla
       },
 
       onPlayerMove: (player: RemotePlayer) => {
-        setPlayers((prev) =>
-          prev.map((p) => (p.sessionId === player.sessionId ? { ...p, ...player } : p)),
-        );
-        if (remoteManagerRef.current && player.sessionId !== clientRef.current?.sessionId) {
-          remoteManagerRef.current.updatePlayer(
-            player.sessionId,
-            player.x,
-            player.z,
-            player.rotation,
-            player.inRover,
+        setPlayers((prev) => {
+          const next = prev.map((p) =>
+            p.sessionId === player.sessionId ? { ...p, ...player } : p,
           );
-        }
+          // Ensure avatar exists even if join was missed
+          const mgr = remoteManagerRef.current;
+          const sid = clientRef.current?.sessionId;
+          if (mgr && player.sessionId !== sid) {
+            if (!mgr.getPlayer(player.sessionId)) {
+              mgr.addPlayer(player.sessionId, player.name, player.color, player.seat);
+            }
+            mgr.updatePlayer(
+              player.sessionId,
+              player.x,
+              player.z,
+              player.rotation,
+              player.inRover,
+            );
+          }
+          return next;
+        });
       },
 
       onStateChange: (state) => {
@@ -278,13 +318,15 @@ export function useMultiplayer(options: UseMultiplayerOptions = {}): UseMultipla
     });
 
     clientRef.current = client;
+    setClientInstance(client);
 
     return () => {
       if (pingTimeoutRef.current) clearTimeout(pingTimeoutRef.current);
       client.disconnect();
       clientRef.current = null;
+      setClientInstance(null);
     };
-  }, [syncPlayersFromState]);
+  }, [syncPlayersFromState, syncRemoteAvatars]);
 
   const markOffline = useCallback((err?: unknown) => {
     setServerOnline(false);
@@ -480,6 +522,6 @@ export function useMultiplayer(options: UseMultiplayerOptions = {}): UseMultipla
     sendMove,
     disconnect,
     setRemotePlayerManager,
-    client: clientRef.current,
+    client: clientInstance,
   };
 }
