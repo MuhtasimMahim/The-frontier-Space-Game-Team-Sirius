@@ -7,39 +7,21 @@ describe("introVideoPreload", () => {
     vi.unstubAllGlobals();
   });
 
-  it("fetches the intro once and returns a blob URL", async () => {
-    const blob = new Blob([new Uint8Array([0, 1, 2, 3])], { type: "video/mp4" });
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: async () => blob,
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const createObjectURL = vi
-      .spyOn(URL, "createObjectURL")
-      .mockReturnValue("blob:intro-test");
-
+  it("pre-warms the intro with stable asset src without mutating to blob url", async () => {
     const mod = await import("@/frontier/game/introVideoPreload");
     const first = await mod.startIntroVideoPreload();
     const second = await mod.startIntroVideoPreload();
 
-    expect(first).toBe("blob:intro-test");
-    expect(second).toBe("blob:intro-test");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]![0]).toBe(STORY_VIDEOS.intro.src);
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    // Stable path ensures browser hardware video decoder is never aborted/reset mid-playback
+    expect(first).toBe(STORY_VIDEOS.intro.src);
+    expect(second).toBe(STORY_VIDEOS.intro.src);
     expect(mod.isIntroVideoPreloaded()).toBe(true);
-    expect(mod.getIntroVideoSrc()).toBe("blob:intro-test");
+    expect(mod.getIntroVideoSrc()).toBe(STORY_VIDEOS.intro.src);
   });
 
-  it("falls back to the public path if fetch fails", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockRejectedValue(new Error("offline")),
-    );
-
+  it("always provides the canonical video path for hardware streaming", async () => {
     const mod = await import("@/frontier/game/introVideoPreload");
-    const src = await mod.startIntroVideoPreload();
-    expect(src).toBe(STORY_VIDEOS.intro.src);
-    expect(mod.isIntroVideoPreloaded()).toBe(false);
+    const src = mod.getIntroVideoSrc();
+    expect(src).toBe("/videos/video_1.mp4");
   });
 });
