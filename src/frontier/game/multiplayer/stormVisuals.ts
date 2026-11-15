@@ -88,7 +88,7 @@ export class StormVisualController {
     sunLight?: pc.Entity,
     skyRig?: unknown,
     camera?: pc.Entity,
-    terrainHeight?: (x: number, z: number) => number
+    terrainHeight?: (x: number, z: number) => number,
   ) {
     this.app = app;
     this.sunLight = sunLight ?? (app.root.findByName("SunLight") as pc.Entity | null);
@@ -334,20 +334,14 @@ export class StormVisualController {
    * @param activeStorm Whether solar radiation storm is ongoing.
    * @param eventBanner Active environmental event banner from simulation.
    */
-  public update(
-    dt: number,
-    activeStorm: boolean,
-    eventBanner?: EventBannerState | null
-  ) {
+  public update(dt: number, activeStorm: boolean, eventBanner?: EventBannerState | null) {
     if (dt <= 0) return;
 
     // Detect storm states
     const isSolarStorm =
-      activeStorm ||
-      (eventBanner?.kind === "storm" && eventBanner?.phase === "active");
+      activeStorm || (eventBanner?.kind === "storm" && eventBanner?.phase === "active");
 
-    const isMeteorActive =
-      eventBanner?.kind === "meteor" && eventBanner?.phase === "active";
+    const isMeteorActive = eventBanner?.kind === "meteor" && eventBanner?.phase === "active";
 
     // Trigger meteor impact burst and flash on transition to active
     if (isMeteorActive && this.lastMeteorPhase !== "active") {
@@ -382,7 +376,7 @@ export class StormVisualController {
     const targetIntensity = pc.math.lerp(
       this.baseSunIntensity,
       this.baseSunIntensity * 0.3,
-      this.stormBlend
+      this.stormBlend,
     );
     this.sunLight.light.intensity = targetIntensity;
 
@@ -390,7 +384,7 @@ export class StormVisualController {
     this.sunLight.light.color.set(
       pc.math.lerp(this.baseSunColor.r, 1.0, this.stormBlend),
       pc.math.lerp(this.baseSunColor.g, 0.62, this.stormBlend),
-      pc.math.lerp(this.baseSunColor.b, 0.22, this.stormBlend)
+      pc.math.lerp(this.baseSunColor.b, 0.22, this.stormBlend),
     );
 
     // Ambient lighting: warm amber dusk cast
@@ -398,7 +392,7 @@ export class StormVisualController {
       this.app.scene.ambientLight.set(
         pc.math.lerp(this.baseAmbient.r, 0.16, this.stormBlend),
         pc.math.lerp(this.baseAmbient.g, 0.08, this.stormBlend),
-        pc.math.lerp(this.baseAmbient.b, 0.03, this.stormBlend)
+        pc.math.lerp(this.baseAmbient.b, 0.03, this.stormBlend),
       );
     }
   }
@@ -412,7 +406,7 @@ export class StormVisualController {
         mat.emissive.set(
           pc.math.lerp(1.0, 0.95, this.stormBlend),
           pc.math.lerp(1.0, 0.52, this.stormBlend),
-          pc.math.lerp(1.0, 0.18, this.stormBlend)
+          pc.math.lerp(1.0, 0.18, this.stormBlend),
         );
         mat.update();
       }
@@ -426,7 +420,7 @@ export class StormVisualController {
       fog.color.set(
         pc.math.lerp(this.baseFogColor.r, 0.18, this.stormBlend),
         pc.math.lerp(this.baseFogColor.g, 0.07, this.stormBlend),
-        pc.math.lerp(this.baseFogColor.b, 0.02, this.stormBlend)
+        pc.math.lerp(this.baseFogColor.b, 0.02, this.stormBlend),
       );
     }
   }
@@ -440,7 +434,7 @@ export class StormVisualController {
     }
     if (this.domOverlay) {
       this.domOverlay.style.boxShadow = `inset 0 0 ${Math.round(
-        120 * this.stormBlend
+        120 * this.stormBlend,
       )}px rgba(230, 45, 10, ${this.stormBlend * 0.75})`;
       this.domOverlay.style.opacity = this.stormBlend > 0.01 ? "1" : "0";
     }
@@ -476,7 +470,7 @@ export class StormVisualController {
       cam.rotateLocal(
         Math.sin(t * 2.1) * intensity * 1.5,
         Math.cos(t * 2.7) * intensity * 1.5,
-        Math.sin(t * 3.4) * intensity * 0.8
+        Math.sin(t * 3.4) * intensity * 0.8,
       );
     }
 
@@ -484,11 +478,7 @@ export class StormVisualController {
     if (isSolarStorm && this.stormBlend > 0.1) {
       const t = performance.now() * 0.012;
       const subtle = this.stormBlend * 0.06;
-      cam.rotateLocal(
-        Math.sin(t * 3.1) * subtle,
-        Math.cos(t * 2.3) * subtle,
-        0
-      );
+      cam.rotateLocal(Math.sin(t * 3.1) * subtle, Math.cos(t * 2.3) * subtle, 0);
     }
   }
 
@@ -558,11 +548,7 @@ export class StormVisualController {
       // Lunar gravity (1.62 m/s²) ballistic trajectory
       p.vy -= 1.62 * 3.0 * dt;
       const pos = p.entity.getPosition();
-      p.entity.setPosition(
-        pos.x + p.vx * dt,
-        pos.y + p.vy * dt,
-        pos.z + p.vz * dt
-      );
+      p.entity.setPosition(pos.x + p.vx * dt, pos.y + p.vy * dt, pos.z + p.vz * dt);
 
       // Scale down over life
       const remaining = 1 - p.life / p.maxLife;
@@ -597,11 +583,7 @@ export class StormVisualController {
       // Strong lateral solar wind drift with slight gravity
       d.vy -= 1.62 * 0.5 * dt;
       const pos = d.entity.getPosition();
-      d.entity.setPosition(
-        pos.x + d.vx * dt,
-        pos.y + d.vy * dt,
-        pos.z + d.vz * dt
-      );
+      d.entity.setPosition(pos.x + d.vx * dt, pos.y + d.vy * dt, pos.z + d.vz * dt);
     }
   }
 
@@ -617,7 +599,7 @@ export class StormVisualController {
       d.entity.setPosition(
         cp.x - 20 + (Math.random() - 0.5) * 15,
         cp.y - 2 + Math.random() * 8,
-        cp.z + (Math.random() - 0.5) * 25
+        cp.z + (Math.random() - 0.5) * 25,
       );
 
       // Sweeping lateral solar storm wind (vx 16–28 m/s)

@@ -40,7 +40,7 @@ export class MultiplayerIntegration {
   public init(
     world: PlayCanvasLunarWorld,
     sim: SimulationManager,
-    client?: FrontierClient | null
+    client?: FrontierClient | null,
   ): void {
     if (this.isDestroyed) return;
     this.world = world;
@@ -56,8 +56,7 @@ export class MultiplayerIntegration {
       (world.getRemotePlayerManager ? world.getRemotePlayerManager() : null);
 
     this.stormController =
-      world.stormController ??
-      (world.getStormController ? world.getStormController() : null);
+      world.stormController ?? (world.getStormController ? world.getStormController() : null);
 
     // Subscribe to client events
     this.setupClientSubscriptions();
@@ -102,15 +101,12 @@ export class MultiplayerIntegration {
 
       onPlayerJoin: (player: RemotePlayer) => {
         prevCallbacks.onPlayerJoin?.(player);
-        if (
-          player.sessionId !== this.client.sessionId &&
-          this.remotePlayerManager
-        ) {
+        if (player.sessionId !== this.client.sessionId && this.remotePlayerManager) {
           this.remotePlayerManager.addPlayer(
             player.sessionId,
             player.name,
             player.color,
-            player.seat
+            player.seat,
           );
         }
       },
@@ -124,16 +120,13 @@ export class MultiplayerIntegration {
 
       onPlayerMove: (player: RemotePlayer) => {
         prevCallbacks.onPlayerMove?.(player);
-        if (
-          player.sessionId !== this.client.sessionId &&
-          this.remotePlayerManager
-        ) {
+        if (player.sessionId !== this.client.sessionId && this.remotePlayerManager) {
           this.remotePlayerManager.updatePlayer(
             player.sessionId,
             player.x,
             player.z,
             player.rotation,
-            player.inRover
+            player.inRover,
           );
         }
       },
@@ -191,7 +184,7 @@ export class MultiplayerIntegration {
     const z = inRover ? state.rover.z : state.player.z;
     const rot = inRover ? state.rover.rotation : state.player.rotation;
 
-    this.client.sendMove(x, z, rot);
+    this.client.sendMove(x, z, rot, inRover);
   }
 
   /**
@@ -199,62 +192,9 @@ export class MultiplayerIntegration {
    */
   public handleRemoteAction(action: GameAction): void {
     if (!this.sim) return;
-    const state = this.sim.state;
-
-    switch (action.type) {
-      case "install_panel":
-        if (typeof this.sim.installPanel === "function") {
-          this.sim.installPanel();
-        }
-        break;
-
-      case "mine_ice": {
-        const targetId = parseInt(action.siteId, 10);
-        const site = isNaN(targetId)
-          ? state.iceSites?.find((s) => s.id.toString() === action.siteId)
-          : state.iceSites?.find((s) => s.id === targetId);
-        if (site && typeof this.sim.fillIce === "function") {
-          this.sim.fillIce(site.id);
-        }
-        break;
-      }
-
-      case "build_module":
-        if (
-          (action.moduleId === "A" || action.moduleId === "B" || action.moduleId === "C") &&
-          typeof this.sim.startBuilding === "function"
-        ) {
-          this.sim.startBuilding(action.moduleId);
-        }
-        break;
-
-      case "repair":
-        if (action.targetId === "rover" && typeof this.sim.repairRover === "function") {
-          this.sim.repairRover();
-        } else if (
-          (action.targetId === "A" || action.targetId === "B" || action.targetId === "C") &&
-          typeof this.sim.repairModule === "function"
-        ) {
-          this.sim.repairModule(action.targetId);
-        }
-        break;
-
-      case "activate_antenna":
-        if (typeof this.sim.lockAntenna === "function") {
-          this.sim.lockAntenna();
-        }
-        break;
-
-      case "harvest_water":
-        if (typeof this.sim.unloadWater === "function") {
-          this.sim.unloadWater();
-        }
-        break;
-
-      case "charge_battery":
-      case "deploy_relay":
-      default:
-        break;
+    if (typeof this.sim.applyRemoteNetAction === "function") {
+      this.sim.applyRemoteNetAction(action);
+      return;
     }
   }
 

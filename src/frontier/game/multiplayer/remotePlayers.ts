@@ -157,12 +157,10 @@ export class RemotePlayerEntity {
     this.entity = new pc.Entity(`Remote_${sessionId}`);
 
     // ---- materials ---------------------------------------------------
-    const suit = mkMat(
-      0.93 * 0.4 + r * 0.6,
-      0.93 * 0.4 + g * 0.6,
-      0.95 * 0.4 + b * 0.6,
-      { metal: 0.02, gloss: 0.3 },
-    );
+    const suit = mkMat(0.93 * 0.4 + r * 0.6, 0.93 * 0.4 + g * 0.6, 0.95 * 0.4 + b * 0.6, {
+      metal: 0.02,
+      gloss: 0.3,
+    });
     const joint = mkMat(0.75, 0.76, 0.8, { metal: 0.1, gloss: 0.35 });
     const visor = mkMat(0.95, 0.7, 0.2, { metal: 1, gloss: 0.95 });
     const pack = mkMat(0.82, 0.83, 0.86, { metal: 0.2, gloss: 0.4 });
@@ -319,7 +317,13 @@ export class RemotePlayerEntity {
       this.nameTag = null;
     }
     const [r, g, b] = this.suitColor;
-    const hex = `#${Math.round(r * 255).toString(16).padStart(2, "0")}${Math.round(g * 255).toString(16).padStart(2, "0")}${Math.round(b * 255).toString(16).padStart(2, "0")}`;
+    const hex = `#${Math.round(r * 255)
+      .toString(16)
+      .padStart(2, "0")}${Math.round(g * 255)
+      .toString(16)
+      .padStart(2, "0")}${Math.round(b * 255)
+      .toString(16)
+      .padStart(2, "0")}`;
     this.initNameTag(name, hex);
   }
 

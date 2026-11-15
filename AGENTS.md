@@ -39,7 +39,7 @@ Phases 0–3 are done: audit, stabilize, the Chapter 1 vertical slice (Nobile Ri
 1. Phase 4: offline NASA DONKI dataset, mission-director pacing, storm visuals, and checkpoint polish around the chapters (story storms are scripted today).
 2. Optional NASA LOLA terrain pipeline when datasets are approved (terrain is still procedural).
 
-**Then — multiplayer:** Colyseus 2–4 player room PoC, sync, reconnect, soft roles / crew scaling. Story steps already name a crew role, and `roleSeat()` in storyline.ts maps roles onto 1–4 seats.
+**Multiplayer (in progress / production path):** Colyseus server in `server/` (Heroku). Title has Solo / Online Crew / Same Device. Online uses room codes (`filterBy`), host launch, action broadcast + peer apply. Soft role seat locks and full authoritative sim are still follow-ups; story steps already name a crew role via `roleSeat()`.
 
 See `docs/RECONCILIATION.md` §10 for the full phase list.
 

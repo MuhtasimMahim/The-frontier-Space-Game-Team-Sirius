@@ -7,7 +7,14 @@ const PLAYER_COLORS = ["#7EE0B8", "#FFD166", "#FF9D9D", "#8FD3FF"] as const;
 const RECONNECT_TIMEOUT_S = 30;
 const DAY_TICK_MS = 100;
 const SECONDS_PER_DAY = 300; // 5 real-time minutes = 1 in-game day
-const DAY_INCREMENT = DAY_TICK_MS / (SECONDS_PER_DAY * 1000);
+
+const PLAYABLE_CHAPTERS = new Set([
+  "chapter1",
+  "chapter2",
+  "chapter3",
+  "chapter4",
+  "full",
+]);
 
 // Quick-chat presets (validated server-side)
 const CHAT_PRESETS = new Set([
@@ -46,7 +53,30 @@ function nextFreeSeat(state: FrontierRoomState): number {
   for (let s = 0; s < 4; s++) {
     if (!taken.has(s)) return s;
   }
-  return 0; // fallback — shouldn't happen with maxClients = 4
+  return 0;
+}
+
+function tallyWinner(state: FrontierRoomState, fallback: string): string {
+  const counts = new Map<string, number>();
+  state.players.forEach((p) => {
+    if (p.vote && PLAYABLE_CHAPTERS.has(p.vote)) {
+      counts.set(p.vote, (counts.get(p.vote) ?? 0) + 1);
+    }
+  });
+  let best: string | null = null;
+  let bestCount = 0;
+  let tied = false;
+  for (const [id, n] of counts) {
+    if (n > bestCount) {
+      best = id;
+      bestCount = n;
+      tied = false;
+    } else if (n === bestCount && n > 0) {
+      tied = true;
+    }
+  }
+  if (!best || tied) return PLAYABLE_CHAPTERS.has(fallback) ? fallback : "chapter1";
+  return best;
 }
 
 // ── Room ─────────────────────────────────────────────────────────────────────
@@ -54,37 +84,49 @@ function nextFreeSeat(state: FrontierRoomState): number {
 export class FrontierRoom extends Room<FrontierRoomState> {
   public roomCode: string = "";
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────
-
   onCreate(options: RoomOptions) {
     const state = new FrontierRoomState();
-    state.stage = options.chapterId ?? "";
+    const initialChapter =
+      options.chapterId && PLAYABLE_CHAPTERS.has(options.chapterId)
+        ? options.chapterId
+        : "chapter1";
+    state.stage = initialChapter;
+    state.chapterId = initialChapter;
     this.setState(state);
 
     this.maxClients = Math.min(options.maxPlayers ?? 4, 4);
 
-    // Expose room code as metadata for matchmaking
-    const code = options.roomCode ?? generateRoomCode();
+    // filterBy(["roomCode"]) matches this option on create/join
+    const code = (options.roomCode ?? generateRoomCode()).toUpperCase().slice(0, 4);
     this.roomCode = code;
-    if (!this.listing) {
-      (this as any).listing = { metadata: {} };
+    try {
+      this.setMetadata({ roomCode: code });
+    } catch {
+      // Unit tests construct the room without a full matchmaker listing
+      (this as { metadata?: { roomCode: string } }).metadata = { roomCode: code };
     }
-    this.setMetadata({ roomCode: code });
 
-    // ── Message handlers ───────────────────────────────────────────────
-
-    this.onMessage("move", (client, data: { x: number; z: number; rotation: number }) => {
-      const player = this.state.players.get(client.sessionId);
-      if (!player) return;
-      if (typeof data.x !== "number" || typeof data.z !== "number" || typeof data.rotation !== "number") return;
-      player.x = data.x;
-      player.z = data.z;
-      player.rotation = data.rotation;
-    });
+    this.onMessage(
+      "move",
+      (client, data: { x: number; z: number; rotation: number; inRover?: boolean }) => {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) return;
+        if (
+          typeof data.x !== "number" ||
+          typeof data.z !== "number" ||
+          typeof data.rotation !== "number"
+        )
+          return;
+        player.x = data.x;
+        player.z = data.z;
+        player.rotation = data.rotation;
+        if (typeof data.inRover === "boolean") player.inRover = data.inRover;
+      },
+    );
 
     this.onMessage("action", (client, data: { type: string; [key: string]: unknown }) => {
       if (!data || typeof data.type !== "string") return;
-      // For now broadcast to all clients — game-logic validation comes later
+      if (this.state.phase !== "playing") return;
       this.broadcast("action", { sender: client.sessionId, ...data }, { except: client });
     });
 
@@ -112,26 +154,42 @@ export class FrontierRoom extends Room<FrontierRoomState> {
 
     this.onMessage("vote", (client, data: { chapterId: string }) => {
       if (!data || typeof data.chapterId !== "string") return;
+      if (!PLAYABLE_CHAPTERS.has(data.chapterId)) return;
+      if (this.state.phase !== "lobby") return;
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      player.vote = data.chapterId;
       this.broadcast("vote", { sender: client.sessionId, chapterId: data.chapterId });
     });
 
     this.onMessage("ready", (client) => {
       const player = this.state.players.get(client.sessionId);
-      if (!player) return;
+      if (!player || this.state.phase !== "lobby") return;
       player.ready = !player.ready;
+    });
 
-      // Check if all players are ready → start game
-      let allReady = true;
+    // Host launches once everyone is ready
+    this.onMessage("start", (client, data: { chapterId?: string }) => {
+      if (this.state.phase !== "lobby") return;
+      const host = this.state.players.get(client.sessionId);
+      if (!host || host.seat !== 0) return;
+
+      let allReady = this.state.players.size >= 1;
       this.state.players.forEach((p) => {
         if (!p.ready) allReady = false;
       });
-      if (allReady && this.state.players.size >= 1 && this.state.phase === "lobby") {
-        this.state.phase = "playing";
-        this.broadcast("gameStart", {});
-      }
-    });
+      if (!allReady) return;
 
-    // ── Day tick ───────────────────────────────────────────────────────
+      const chapterId = tallyWinner(
+        this.state,
+        typeof data?.chapterId === "string" ? data.chapterId : this.state.chapterId,
+      );
+      this.state.chapterId = chapterId;
+      this.state.stage = chapterId;
+      this.state.phase = "playing";
+      this.broadcast("gameStart", { chapterId });
+      console.log(`[FrontierRoom] launch  code=${this.roomCode}  chapter=${chapterId}`);
+    });
 
     this.setSimulationInterval((deltaTime) => {
       if (this.state.phase !== "playing") return;
@@ -143,19 +201,23 @@ export class FrontierRoom extends Room<FrontierRoomState> {
       }
     }, DAY_TICK_MS);
 
-    console.log(`[FrontierRoom] created  code=${code}  chapter=${state.stage}  max=${this.maxClients}`);
+    console.log(
+      `[FrontierRoom] created  code=${code}  chapter=${state.stage}  max=${this.maxClients}`,
+    );
   }
 
-  // ── Join ──────────────────────────────────────────────────────────────
-
   onJoin(client: Client, options: { name?: string }) {
+    if (this.state.phase !== "lobby") {
+      throw new Error("Mission already underway — join a new room.");
+    }
     const seat = nextFreeSeat(this.state);
     const player = new PlayerSchema();
     player.sessionId = client.sessionId;
     player.name = (options.name ?? `Player ${seat + 1}`).slice(0, 24);
     player.seat = seat;
-    player.color = PLAYER_COLORS[seat % PLAYER_COLORS.length];
+    player.color = PLAYER_COLORS[seat % PLAYER_COLORS.length]!;
     player.connected = true;
+    player.vote = "";
 
     this.state.players.set(client.sessionId, player);
 
@@ -164,30 +226,39 @@ export class FrontierRoom extends Room<FrontierRoomState> {
       name: player.name,
       seat: player.seat,
       color: player.color,
+      ready: false,
+      vote: "",
+      connected: true,
+      x: 0,
+      z: 0,
+      rotation: 0,
+      inRover: false,
     });
 
-    console.log(`[FrontierRoom] join  session=${client.sessionId}  name=${player.name}  seat=${seat}`);
+    console.log(
+      `[FrontierRoom] join  session=${client.sessionId}  name=${player.name}  seat=${seat}`,
+    );
   }
-
-  // ── Leave / Reconnect ─────────────────────────────────────────────────
 
   async onLeave(client: Client, consented: boolean) {
     const player = this.state.players.get(client.sessionId);
     if (player) player.connected = false;
 
-    console.log(`[FrontierRoom] leave  session=${client.sessionId}  consented=${consented}`);
+    console.log(
+      `[FrontierRoom] leave  session=${client.sessionId}  consented=${consented}`,
+    );
 
     try {
       if (!consented) {
-        // Allow reconnection within 30 s
         await this.allowReconnection(client, RECONNECT_TIMEOUT_S);
-        // Player reconnected
         if (player) player.connected = true;
         this.broadcast("playerReconnect", { sessionId: client.sessionId });
         console.log(`[FrontierRoom] reconnected  session=${client.sessionId}`);
+      } else {
+        this.state.players.delete(client.sessionId);
+        this.broadcast("playerLeave", { sessionId: client.sessionId });
       }
     } catch {
-      // Reconnection timed out — remove permanently
       this.state.players.delete(client.sessionId);
       this.broadcast("playerLeave", { sessionId: client.sessionId });
       console.log(`[FrontierRoom] removed  session=${client.sessionId}`);

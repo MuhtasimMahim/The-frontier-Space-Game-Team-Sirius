@@ -18,8 +18,10 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", uptime: process.uptime() });
 });
 
-// Colyseus monitor (dev / admin only)
-app.use("/colyseus", monitor());
+// Colyseus monitor — only when explicitly enabled (never open on public Heroku by default)
+if (process.env.ENABLE_MONITOR === "1" || process.env.NODE_ENV !== "production") {
+  app.use("/colyseus", monitor());
+}
 
 // ── Colyseus Server ──────────────────────────────────────────────────────────
 
@@ -29,8 +31,8 @@ const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
 });
 
-// Register the room
-gameServer.define("frontier", FrontierRoom);
+// Room-code invite matching: client create/join must pass { roomCode }
+gameServer.define("frontier", FrontierRoom).filterBy(["roomCode"]);
 
 // ── Listen ───────────────────────────────────────────────────────────────────
 
@@ -38,5 +40,7 @@ const PORT = Number(process.env.PORT) || 2567;
 
 gameServer.listen(PORT).then(() => {
   console.log(`[Frontier] Colyseus server listening on port ${PORT}`);
-  console.log(`[Frontier] Monitor: http://localhost:${PORT}/colyseus`);
+  if (process.env.ENABLE_MONITOR === "1" || process.env.NODE_ENV !== "production") {
+    console.log(`[Frontier] Monitor: http://localhost:${PORT}/colyseus`);
+  }
 });

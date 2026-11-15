@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { CONFIG, type FactDef } from "../game/config";
 import { gameSim, type GameState } from "../game/simulation";
 import {
@@ -12,10 +12,14 @@ import {
   type StoryChapterDef,
 } from "../game/storyline";
 import { getChapter } from "../game/chapters";
+import { STORY_VIDEOS, getVideoForChapter } from "../game/storyVideos";
+import { StoryVideoModal } from "./StoryVideoModal";
 
 const factHeading = (title: string) => (/[?!.:]$/.test(title) ? title : `${title}:`);
 
 const StoryBriefing: React.FC<{ state: GameState; def: StoryChapterDef }> = ({ state, def }) => {
+  const videoDef = getVideoForChapter(def.id);
+  const [showVideo, setShowVideo] = useState<boolean>(Boolean(videoDef));
   const roles = chapterRoles(def);
   const crew = state.playMode === "crew" ? state.crewSize : 1;
   const seats = Array.from({ length: crew }, (_, seat) =>
@@ -23,18 +27,38 @@ const StoryBriefing: React.FC<{ state: GameState; def: StoryChapterDef }> = ({ s
   );
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center p-6 select-none font-gotham text-white luna-gradient overflow-y-auto">
+      {showVideo && videoDef && (
+        <StoryVideoModal video={videoDef} onClose={() => setShowVideo(false)} />
+      )}
       <div className="max-w-5xl w-full luna-panel rounded-[24px] p-8 flex flex-col gap-6 shadow-2xl my-auto">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-4">
-          <span
-            className="text-xs font-extrabold tracking-widest uppercase px-3 py-1 rounded-full border"
-            style={{
-              color: def.accent,
-              borderColor: `${def.accent}66`,
-              backgroundColor: `${def.accent}22`,
-            }}
-          >
-            {def.badge}
-          </span>
+          <div className="flex items-center gap-3">
+            <span
+              className="text-xs font-extrabold tracking-widest uppercase px-3 py-1 rounded-full border"
+              style={{
+                color: def.accent,
+                borderColor: `${def.accent}66`,
+                backgroundColor: `${def.accent}22`,
+              }}
+            >
+              {def.badge}
+            </span>
+            {videoDef && (
+              <button
+                onClick={() => setShowVideo(true)}
+                className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm border"
+                style={{
+                  color: def.accent,
+                  borderColor: `${def.accent}88`,
+                  backgroundColor: `${def.accent}22`,
+                }}
+                title="Watch Mission Animated Story"
+              >
+                <span>▶</span>
+                <span>Watch Story</span>
+              </button>
+            )}
+          </div>
           <span className="text-xs font-mono text-[#CFD8F7]">
             {def.campName.toUpperCase()} · {def.latitudeLabel.toUpperCase()} ·{" "}
             {Math.round(state.selectedSite.sunlight * 100)}% SUNLIGHT
@@ -103,12 +127,12 @@ const StoryBriefing: React.FC<{ state: GameState; def: StoryChapterDef }> = ({ s
             <div className="rounded-[16px] bg-[#080C1A]/60 border border-white/10 p-4 flex flex-col gap-2 text-xs text-[#CFD8F7]">
               <div className="font-bold uppercase tracking-wider text-[#8FD3FF]">Controls</div>
               <div>
-                <strong className="text-white">Mouse:</strong> Look around (GTA orbit) · Click to lock cursor ·{" "}
-                <strong className="text-white">Wheel:</strong> Zoom
+                <strong className="text-white">Mouse:</strong> Look around (GTA orbit) · Click to
+                lock cursor · <strong className="text-white">Wheel:</strong> Zoom
               </div>
               <div>
-                <strong className="text-white">W A S D:</strong> Move relative to view · Drive rover ·{" "}
-                <strong className="text-white">Shift:</strong> Boost
+                <strong className="text-white">W A S D:</strong> Move relative to view · Drive rover
+                · <strong className="text-white">Shift:</strong> Boost
               </div>
               <div>
                 <strong className="text-white">Space:</strong> Jump · Exit rover ·{" "}
@@ -117,8 +141,8 @@ const StoryBriefing: React.FC<{ state: GameState; def: StoryChapterDef }> = ({ s
               </div>
               {def.id === "chapter3" && (
                 <div>
-                  <strong className="text-white">Aiming the dish:</strong> Mouse or A/D turn, W/S tilt, hold
-                  E to lock, Space to step away
+                  <strong className="text-white">Aiming the dish:</strong> Mouse or A/D turn, W/S
+                  tilt, hold E to lock, Space to step away
                 </div>
               )}
               {def.id === "chapter4" && (
@@ -161,8 +185,13 @@ const StoryBriefing: React.FC<{ state: GameState; def: StoryChapterDef }> = ({ s
 
 // Title Screen (Matches TitleUI.luau)
 export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
+  const [showIntroVideo, setShowIntroVideo] = useState<boolean>(false);
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-between p-12 select-none font-gotham text-white luna-gradient overflow-hidden">
+      {showIntroVideo && (
+        <StoryVideoModal video={STORY_VIDEOS.intro} onClose={() => setShowIntroVideo(false)} />
+      )}
       {/* Left Column: Badge, Title, Subtitle, Start Buttons, Resource Chips */}
       <div className="max-w-2xl flex flex-col gap-5 z-10">
         {/* Badge */}
@@ -183,7 +212,7 @@ export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
           {CONFIG.TEXTS.titleSubtitle}
         </p>
 
-        {/* Solo chapters / Crew vote / Resume */}
+        {/* Solo / Online Crew / Same-device vote / Resume */}
         <div className="flex flex-wrap items-center gap-3 mt-2">
           <button
             onClick={() => gameSim.openChapterSelect("solo")}
@@ -194,11 +223,27 @@ export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
           </button>
 
           <button
-            onClick={() => gameSim.openChapterSelect("crew")}
+            onClick={() => gameSim.openChapterSelect("online")}
             className="px-7 h-16 rounded-full bg-[#8FD3FF] hover:bg-[#6fc4f5] text-[#0F2A3A] font-extrabold text-xl tracking-wide shadow-2xl transition-all cursor-pointer flex items-center justify-center gap-3 hover:scale-105 active:scale-95 uppercase"
           >
-            <span>Crew Vote</span>
+            <span>Online Crew</span>
             <span>→</span>
+          </button>
+
+          <button
+            onClick={() => gameSim.openChapterSelect("crew")}
+            className="px-5 h-14 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white font-bold text-sm tracking-wide shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-105 active:scale-95 uppercase"
+          >
+            <span>Same Device</span>
+          </button>
+
+          <button
+            onClick={() => setShowIntroVideo(true)}
+            className="px-5 h-14 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white font-bold text-sm tracking-wide shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-105 active:scale-95 uppercase"
+            title="Watch Animated Team Story Intro"
+          >
+            <span className="text-[#FFD166]">▶</span>
+            <span>Story Video</span>
           </button>
 
           {state.hasCheckpoint && state.checkpointInfo && (
@@ -252,13 +297,32 @@ export const BriefingUI: React.FC<{ state: GameState }> = ({ state }) => {
   const ch = CONFIG.CHAPTER_1;
   if (isStoryChapter(state.missionMode))
     return <StoryBriefing state={state} def={STORY_CHAPTERS[state.missionMode]} />;
+
+  const videoDef = getVideoForChapter("chapter1");
+  const [showVideo, setShowVideo] = useState<boolean>(Boolean(videoDef));
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center p-6 select-none font-gotham text-white luna-gradient overflow-y-auto">
+      {showVideo && videoDef && (
+        <StoryVideoModal video={videoDef} onClose={() => setShowVideo(false)} />
+      )}
       <div className="max-w-4xl w-full luna-panel rounded-[24px] p-8 flex flex-col gap-6 shadow-2xl my-auto">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-4">
-          <span className="text-xs font-extrabold tracking-widest uppercase px-3 py-1 rounded-full bg-[#7EE0B8]/20 text-[#7EE0B8] border border-[#7EE0B8]/40">
-            {ch.briefingBadge}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-extrabold tracking-widest uppercase px-3 py-1 rounded-full bg-[#7EE0B8]/20 text-[#7EE0B8] border border-[#7EE0B8]/40">
+              {ch.briefingBadge}
+            </span>
+            {videoDef && (
+              <button
+                onClick={() => setShowVideo(true)}
+                className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm border bg-[#7EE0B8]/20 border-[#7EE0B8]/50 text-[#7EE0B8]"
+                title="Watch Chapter 1 Story Video"
+              >
+                <span>▶</span>
+                <span>Watch Story</span>
+              </button>
+            )}
+          </div>
           <span className="text-xs font-mono text-[#CFD8F7]">
             SITE: {state.selectedSite.name.toUpperCase()} ·{" "}
             {Math.round(state.selectedSite.sunlight * 100)}% POLAR SUNLIGHT
@@ -383,9 +447,17 @@ export const PauseMenuUI: React.FC<{ state: GameState }> = ({ state }) => {
 
         <div className="rounded-[16px] bg-[#080C1A]/60 border border-white/10 p-3.5 flex flex-col gap-1 text-xs text-[#CFD8F7]">
           <div className="font-bold uppercase tracking-wider text-[#8FD3FF]">Controls</div>
-          <div><strong className="text-white">Mouse:</strong> Look around (GTA orbit) · Click to lock cursor · Scroll to zoom</div>
-          <div><strong className="text-white">W A S D:</strong> Move relative to camera view · Steer rover</div>
-          <div><strong className="text-white">Esc:</strong> Unlock cursor / pause</div>
+          <div>
+            <strong className="text-white">Mouse:</strong> Look around (GTA orbit) · Click to lock
+            cursor · Scroll to zoom
+          </div>
+          <div>
+            <strong className="text-white">W A S D:</strong> Move relative to camera view · Steer
+            rover
+          </div>
+          <div>
+            <strong className="text-white">Esc:</strong> Unlock cursor / pause
+          </div>
         </div>
 
         <p className="text-xs text-center text-[#AAB6DC]">Press Esc again to resume</p>
@@ -401,6 +473,10 @@ export const ResultUI: React.FC<{ state: GameState }> = ({ state }) => {
   const next = isWon && state.missionMode !== "full" ? nextChapterId(state.missionMode) : null;
   const nextDef = next ? getChapter(next) : null;
   const campaignComplete = CAMPAIGN_ORDER.every((id) => state.campaignDone.includes(id));
+  const victoryVideo = STORY_VIDEOS.victory;
+  const [showVictoryVideo, setShowVictoryVideo] = useState<boolean>(
+    isWon && (story?.id === "chapter4" || state.missionMode === "full"),
+  );
 
   if (story) {
     const stats: { label: string; value: React.ReactNode; color: string }[] = [
@@ -435,16 +511,31 @@ export const ResultUI: React.FC<{ state: GameState }> = ({ state }) => {
     ];
     return (
       <div className="absolute inset-0 z-50 flex items-center justify-center p-8 select-none font-gotham text-white luna-gradient overflow-y-auto">
+        {showVictoryVideo && victoryVideo && (
+          <StoryVideoModal video={victoryVideo} onClose={() => setShowVictoryVideo(false)} />
+        )}
         <div className="max-w-4xl w-full flex flex-col gap-6 my-auto">
-          <div>
-            <div
-              className="text-xs font-bold font-mono tracking-widest uppercase mb-1"
-              style={{ color: story.accent }}
-            >
-              Chapter {story.number} complete · {story.campName}
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div
+                className="text-xs font-bold font-mono tracking-widest uppercase mb-1"
+                style={{ color: story.accent }}
+              >
+                Chapter {story.number} complete · {story.campName}
+              </div>
+              <h1 className="text-5xl font-black text-white">{story.winTitle}</h1>
+              <p className="text-base text-[#DFE6FF] mt-3 leading-relaxed">{story.winText}</p>
             </div>
-            <h1 className="text-5xl font-black text-white">{story.winTitle}</h1>
-            <p className="text-base text-[#DFE6FF] mt-3 leading-relaxed">{story.winText}</p>
+            {isWon && (
+              <button
+                onClick={() => setShowVictoryVideo(true)}
+                className="px-4 py-2 rounded-full bg-[#FFD166]/20 hover:bg-[#FFD166]/30 border border-[#FFD166]/50 text-[#FFD166] text-xs font-black tracking-wider cursor-pointer flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-md uppercase mt-2"
+                title="Watch Victory Animated Video"
+              >
+                <span>▶</span>
+                <span>Victory Video</span>
+              </button>
+            )}
           </div>
 
           {story.id === "chapter4" && campaignComplete && (
@@ -524,16 +615,31 @@ export const ResultUI: React.FC<{ state: GameState }> = ({ state }) => {
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center p-8 select-none font-gotham text-white luna-gradient overflow-y-auto">
+      {showVictoryVideo && victoryVideo && (
+        <StoryVideoModal video={victoryVideo} onClose={() => setShowVictoryVideo(false)} />
+      )}
       <div className="max-w-5xl w-full grid grid-cols-1 md:grid-cols-12 gap-8 my-auto">
         {/* LEFT COLUMN: Mission Header, 2x2 Summary Tiles, Crew Log, Restart Button */}
         <div className="md:col-span-7 flex flex-col gap-6">
           {/* Header */}
           <div>
-            <div
-              className="text-xs font-bold font-mono tracking-widest uppercase mb-1"
-              style={{ color: isWon ? "#7EE0B8" : "#FF9D9D" }}
-            >
-              {isWon ? CONFIG.TEXTS.resultWonTag : CONFIG.TEXTS.resultLostTag}
+            <div className="flex items-center justify-between gap-4">
+              <div
+                className="text-xs font-bold font-mono tracking-widest uppercase mb-1"
+                style={{ color: isWon ? "#7EE0B8" : "#FF9D9D" }}
+              >
+                {isWon ? CONFIG.TEXTS.resultWonTag : CONFIG.TEXTS.resultLostTag}
+              </div>
+              {isWon && (
+                <button
+                  onClick={() => setShowVictoryVideo(true)}
+                  className="px-4 py-1.5 rounded-full bg-[#FFD166]/20 hover:bg-[#FFD166]/30 border border-[#FFD166]/50 text-[#FFD166] text-xs font-black tracking-wider cursor-pointer flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all shadow-md uppercase"
+                  title="Watch Victory Animated Video"
+                >
+                  <span>▶</span>
+                  <span>Victory Video</span>
+                </button>
+              )}
             </div>
             <h1 className="text-5xl font-black text-white">
               {isWon

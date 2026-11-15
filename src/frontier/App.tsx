@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { PlayCanvasLunarWorld, type Quality } from "./game/playcanvasWorld";
 import { gameSim, type GameState } from "./game/simulation";
 import { siteKeyForMode } from "./game/sites";
@@ -15,6 +15,7 @@ import {
   type LobbyPlayer,
 } from "./game/multiplayer/MultiplayerUI";
 import { tallyChapterVotes, type ChapterId } from "./game/chapters";
+import type { GameAction } from "./game/multiplayer/types";
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -24,12 +25,33 @@ export const App: React.FC = () => {
   const [quality, setQuality] = useState<Quality>("medium");
   const [loaded, setLoaded] = useState({ done: 0, total: 1 });
 
-  // Multiplayer networking hook
+  const handleRemoteAction = useCallback((action: GameAction & { sender: string }) => {
+    gameSim.applyRemoteNetAction(action);
+  }, []);
+
+  const handleGameStart = useCallback((chapterId: string) => {
+    const id = (chapterId || "chapter1") as ChapterId;
+    if (gameSim.state.phase === "chapters" && gameSim.state.playMode === "online") {
+      gameSim.startVotedChapter(id);
+    }
+  }, []);
+
   const mp = useMultiplayer({
     playerName: "Astronaut",
+    onAction: handleRemoteAction,
+    onGameStart: handleGameStart,
   });
 
-  // Each site is its own scene; switching chapters rebuilds the world behind the briefing
+  // Wire sim → Colyseus action broadcast while in an online room
+  useEffect(() => {
+    if (mp.isConnected && gameState.playMode === "online") {
+      gameSim.setNetworkOut((action) => mp.sendAction(action as GameAction));
+    } else {
+      gameSim.setNetworkOut(null);
+    }
+    return () => gameSim.setNetworkOut(null);
+  }, [mp.isConnected, gameState.playMode, mp.sendAction]);
+
   const siteKey = siteKeyForMode(gameState.missionMode);
 
   useEffect(() => {
@@ -72,6 +94,7 @@ export const App: React.FC = () => {
         if (worldRef.current === world) worldRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rebuild world only when site changes
   }, [siteKey]);
 
   useEffect(() => {
@@ -85,19 +108,38 @@ export const App: React.FC = () => {
     ? STORY_CHAPTERS[gameState.missionMode]
     : null;
 
+  const showOnlineLobby = gameState.phase === "chapters" && gameState.playMode === "online";
+
+  const leaveOnlineLobby = () => {
+    mp.disconnect();
+    gameSim.returnToTitle();
+  };
+
+  const playSoloFromOffline = () => {
+    mp.disconnect();
+    gameSim.openChapterSelect("solo");
+  };
+
+  // Probe crew server as soon as the online lobby opens (Heroku may be asleep / down)
+  useEffect(() => {
+    if (showOnlineLobby && !mp.isConnected) {
+      void mp.checkServer();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when entering the lobby
+  }, [showOnlineLobby]);
+
+  const lobbyVotes = mp.votes as Record<string, ChapterId>;
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#080C1A]">
-      {/* 1. PlayCanvas 3D canvas (fresh element per site so each scene gets a clean GPU context) */}
       <canvas
         key={siteKey}
         ref={canvasRef}
         className="absolute inset-0 w-full h-full block touch-none"
       />
 
-      {/* 2. In-Game HUD: Left Column, Top Center, Right Column, Oxygen, Radar */}
       {gameState.phase === "playing" && <HUD state={gameState} />}
 
-      {/* 2a. Multiplayer HUD Overlay */}
       {gameState.phase === "playing" && mp.isConnected && (
         <MultiplayerHUDOverlay
           players={mp.players as LobbyPlayer[]}
@@ -110,10 +152,8 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* 2b. Pause / Exit Menu (Esc while playing) */}
       {gameState.phase === "playing" && gameState.menuOpen && <PauseMenuUI state={gameState} />}
 
-      {/* Graphics quality + model loading */}
       <div className="absolute bottom-3 right-3 z-[60] flex items-center gap-2 rounded-lg bg-[#121A30]/85 px-3 py-1.5 text-xs text-white font-gotham select-none">
         {loaded.done < loaded.total && (
           <span className="text-[#AAB6DC]">
@@ -136,75 +176,45 @@ export const App: React.FC = () => {
         ))}
       </div>
 
-      {/* 3. Title Screen (Matches TitleUI.luau) */}
       {gameState.phase === "title" && <TitleUI state={gameState} />}
 
-      {/* 3b. Chapter Select / Crew Vote */}
-      {gameState.phase === "chapters" &&
-        (gameState.playMode === "crew" && mp.isConnected ? (
-          <MultiplayerLobbyUI
-            roomCode={mp.roomCode}
-            isConnected={mp.isConnected}
-            isConnecting={mp.isConnecting}
-            isHost={mp.isHost}
-            players={mp.players as LobbyPlayer[]}
-            localSessionId={mp.sessionId}
-            error={mp.error}
-            onCreateRoom={(chapterId) => mp.createRoom(chapterId)}
-            onJoinRoom={(code) => mp.joinRoom(code)}
-            onToggleReady={() => mp.sendReady()}
-            onVoteChapter={(chapterId) => {
-              mp.sendVote(chapterId);
-              const seat = mp.players.find((p) => p.sessionId === mp.sessionId)?.seat ?? 0;
-              gameSim.castChapterVote(seat, chapterId);
-            }}
-            onStartGame={() => {
-              const winning =
-                tallyChapterVotes(
-                  (mp.players as LobbyPlayer[])
-                    .map((p) => p.vote)
-                    .filter((v): v is ChapterId => !!v)
-                ).winner ?? "chapter1";
-              gameSim.startVotedChapter(winning);
-            }}
-            onLeaveRoom={() => mp.disconnect()}
-          />
-        ) : (
-          <ChapterSelectUI state={gameState} />
-        ))}
+      {showOnlineLobby && (
+        <MultiplayerLobbyUI
+          roomCode={mp.roomCode}
+          isConnected={mp.isConnected}
+          isConnecting={mp.isConnecting}
+          isHost={mp.isHost}
+          players={mp.players as LobbyPlayer[]}
+          localSessionId={mp.sessionId}
+          currentVote={(mp.currentVote as ChapterId) ?? null}
+          votes={lobbyVotes}
+          error={mp.error}
+          serverOnline={mp.serverOnline}
+          isCheckingServer={mp.isCheckingServer}
+          onCreateRoom={(chapterId) => mp.createRoom(chapterId)}
+          onJoinRoom={(code) => mp.joinRoom(code)}
+          onToggleReady={() => mp.sendReady()}
+          onVoteChapter={(chapterId) => mp.sendVote(chapterId)}
+          onStartGame={() => {
+            const winning =
+              tallyChapterVotes(Object.values(lobbyVotes)).winner ??
+              ((mp.currentVote as ChapterId) || "chapter1");
+            mp.sendStart(winning);
+          }}
+          onLeaveRoom={leaveOnlineLobby}
+          onPlaySolo={playSoloFromOffline}
+          onRetryServer={() => void mp.checkServer()}
+        />
+      )}
 
-      {/* 4. Landing Site Selection (Matches SiteSelectUI.luau) */}
-      {gameState.phase === "selecting" &&
-        (gameState.playMode === "crew" && mp.isConnected ? (
-          <MultiplayerLobbyUI
-            roomCode={mp.roomCode}
-            isConnected={mp.isConnected}
-            isConnecting={mp.isConnecting}
-            isHost={mp.isHost}
-            players={mp.players as LobbyPlayer[]}
-            localSessionId={mp.sessionId}
-            error={mp.error}
-            onCreateRoom={(chapterId) => mp.createRoom(chapterId)}
-            onJoinRoom={(code) => mp.joinRoom(code)}
-            onToggleReady={() => mp.sendReady()}
-            onVoteChapter={(chapterId) => {
-              mp.sendVote(chapterId);
-              const seat = mp.players.find((p) => p.sessionId === mp.sessionId)?.seat ?? 0;
-              gameSim.castChapterVote(seat, chapterId);
-            }}
-            onStartGame={() => {
-              gameSim.selectSite(gameSim.state.selectedSite);
-            }}
-            onLeaveRoom={() => mp.disconnect()}
-          />
-        ) : (
-          <SiteSelectUI />
-        ))}
+      {gameState.phase === "chapters" && gameState.playMode !== "online" && (
+        <ChapterSelectUI state={gameState} />
+      )}
 
-      {/* 4b. Mission Briefing (Chapter 1 or story chapters 2–4) */}
+      {gameState.phase === "selecting" && <SiteSelectUI />}
+
       {gameState.phase === "briefing" && <BriefingUI state={gameState} />}
 
-      {/* 5. Landing / hopper flight overlay */}
       {gameState.phase === "landing" &&
         (story ? (
           <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-md text-white font-gotham select-none">
@@ -249,7 +259,6 @@ export const App: React.FC = () => {
           </div>
         ))}
 
-      {/* 6. Game Results Modal (Won / Lost) */}
       {(gameState.phase === "won" || gameState.phase === "lost") && <ResultUI state={gameState} />}
     </div>
   );

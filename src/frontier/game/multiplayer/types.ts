@@ -28,6 +28,9 @@ export interface RemotePlayer {
   inRover: boolean;
   color: string;
   seat: number;
+  ready?: boolean;
+  connected?: boolean;
+  vote?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,14 +64,18 @@ export interface PingData {
 // ---------------------------------------------------------------------------
 
 export type GameAction =
-  | { type: "install_panel"; targetId: string }
+  | { type: "install_panel" }
   | { type: "mine_ice"; siteId: string }
   | { type: "build_module"; moduleId: string }
   | { type: "charge_battery"; stationId: string }
   | { type: "repair"; targetId: string }
   | { type: "deploy_relay"; x: number; z: number }
-  | { type: "activate_antenna"; antennaId: string }
-  | { type: "harvest_water"; dockId: string };
+  | { type: "activate_antenna" }
+  | { type: "harvest_water" }
+  | { type: "open_airlock" }
+  | { type: "align_solar" }
+  | { type: "orient_site" }
+  | { type: "story_action"; actionId: string; index?: number };
 
 // ---------------------------------------------------------------------------
 // Room creation / join options (sent over the wire)
@@ -84,12 +91,7 @@ export interface RoomCreateOptions {
 // Constants shared between client and server
 // ---------------------------------------------------------------------------
 
-export const PLAYER_COLORS = [
-  "#7EE0B8",
-  "#FFD166",
-  "#FF9D9D",
-  "#8FD3FF",
-] as const;
+export const PLAYER_COLORS = ["#7EE0B8", "#FFD166", "#FF9D9D", "#8FD3FF"] as const;
 
 export const ROOM_CODE_LENGTH = 4;
 

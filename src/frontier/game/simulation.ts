@@ -272,6 +272,20 @@ export interface GameState {
   } | null;
 }
 
+export type SimNetAction =
+  | { type: "install_panel" }
+  | { type: "mine_ice"; siteId: string }
+  | { type: "build_module"; moduleId: string }
+  | { type: "repair"; targetId: string }
+  | { type: "activate_antenna" }
+  | { type: "harvest_water" }
+  | { type: "open_airlock" }
+  | { type: "align_solar" }
+  | { type: "orient_site" }
+  | { type: "story_action"; actionId: string; index?: number }
+  | { type: "charge_battery"; stationId: string }
+  | { type: "deploy_relay"; x: number; z: number };
+
 export class SimulationManager {
   public state: GameState;
   private listeners: Set<(state: GameState) => void> = new Set();
@@ -281,12 +295,83 @@ export class SimulationManager {
   private breathTimer: number = 0;
   private doorCloseTimer: number = 0;
   private factTimer = 0;
+  /** Online co-op: emit local gameplay actions so peers can mirror them. */
+  private netOut: ((action: SimNetAction) => void) | null = null;
+  private applyingRemote = false;
   private factGap = 99;
   private factQueue: FactDef[] = [];
   private stormWarnTimer = 0;
 
   constructor(seed?: number) {
     this.state = this.getInitialState(seed);
+  }
+
+  /** Wire online co-op outbound actions (no-op in solo). */
+  public setNetworkOut(fn: ((action: SimNetAction) => void) | null) {
+    this.netOut = fn;
+  }
+
+  private emitNet(action: SimNetAction) {
+    if (this.applyingRemote || this.state.playMode !== "online") return;
+    this.netOut?.(action);
+  }
+
+  /** Apply a peer's gameplay action without re-broadcasting. */
+  public applyRemoteNetAction(action: SimNetAction) {
+    this.applyingRemote = true;
+    try {
+      switch (action.type) {
+        case "install_panel":
+          this.installPanel();
+          break;
+        case "mine_ice":
+          this.fillIce(Number(action.siteId));
+          break;
+        case "build_module":
+          if (action.moduleId === "A" || action.moduleId === "B" || action.moduleId === "C") {
+            this.startBuilding(action.moduleId);
+          }
+          break;
+        case "repair":
+          if (action.targetId === "rover") this.repairRover();
+          else if (action.targetId === "A" || action.targetId === "B" || action.targetId === "C") {
+            this.repairModule(action.targetId);
+          }
+          break;
+        case "activate_antenna":
+          this.lockAntenna();
+          break;
+        case "harvest_water":
+          this.unloadWater();
+          break;
+        case "open_airlock":
+          this.openAirlock();
+          break;
+        case "align_solar":
+          this.alignSolarArrays();
+          break;
+        case "orient_site":
+          this.completeOrientation();
+          break;
+        case "story_action": {
+          if (action.actionId === "info") break;
+          this.performStoryAction({
+            id: action.actionId as StoryAction["id"],
+            index: action.index ?? 0,
+            hold: 0,
+            objectText: "",
+            actionText: "",
+            distance: 0,
+          });
+          break;
+        }
+        case "charge_battery":
+        case "deploy_relay":
+          break;
+      }
+    } finally {
+      this.applyingRemote = false;
+    }
   }
 
   private scheduleTimeout(fn: () => void, ms: number) {
@@ -467,7 +552,16 @@ export class SimulationManager {
     this.notify();
   }
 
-  /** Opens the chapter list for solo play or shared-device crew voting. */
+  /** Leave lobby / chapter select and show the title screen again. */
+  public returnToTitle() {
+    this.pauseLoop();
+    this.state.phase = "title";
+    this.state.playMode = "solo";
+    this.state.selectedChapterId = null;
+    this.notify();
+  }
+
+  /** Opens the chapter list for solo play, same-device crew voting, or online lobby. */
   public openChapterSelect(mode: PlayMode) {
     sound.playClick();
     this.state.playMode = mode;
@@ -475,6 +569,8 @@ export class SimulationManager {
     if (mode === "crew") {
       this.state.crewVotes = emptyCrewVotes(this.state.crewSize);
       sound.speak("Crew vote open. Pick a chapter together.");
+    } else if (mode === "online") {
+      sound.speak("Online crew lobby. Create a room or join with a code.");
     } else {
       sound.speak("Choose your chapter and begin when ready.");
     }
@@ -508,9 +604,10 @@ export class SimulationManager {
     this.launchChapter(chapterId);
   }
 
-  /** Crew: begin the chapter that won the vote. */
+  /** Crew / online: begin the chapter that won the vote (or host pick). */
   public startVotedChapter(chapterId: ChapterId) {
-    if (this.state.phase !== "chapters" || this.state.playMode !== "crew") return;
+    if (this.state.phase !== "chapters") return;
+    if (this.state.playMode !== "crew" && this.state.playMode !== "online") return;
     const chapter = getChapter(chapterId);
     if (chapter.status !== "playable") return;
     this.state.selectedChapterId = chapterId;
@@ -1211,6 +1308,7 @@ export class SimulationManager {
   // User Actions with Audio Feedback
   public completeOrientation() {
     if (this.state.siteOriented) return;
+    this.emitNet({ type: "orient_site" });
     sound.playMilestone();
     this.state.siteOriented = true;
     if (this.state.stage === "orient") {
@@ -1246,6 +1344,7 @@ export class SimulationManager {
       this.addToast("Deploy at least 1 solar panel before aligning the sun-tracker.", "warn");
       return;
     }
+    this.emitNet({ type: "align_solar" });
     sound.playMilestone();
     this.state.solarAligned = true;
     this.triggerFact("solar_alignment");
@@ -1308,6 +1407,7 @@ export class SimulationManager {
       }
       this.saveCheckpoint(true);
     }
+    this.emitNet({ type: "install_panel" });
     this.syncNetworkUnlock();
     this.notify();
   }
@@ -1325,6 +1425,7 @@ export class SimulationManager {
       return;
     }
 
+    this.emitNet({ type: "build_module", moduleId: id });
     sound.playClick();
     this.state.energy -= mod.def.cost.energy;
     this.state.water -= mod.def.cost.water;
@@ -1364,6 +1465,7 @@ export class SimulationManager {
       return;
     }
 
+    this.emitNet({ type: "mine_ice", siteId: String(siteId) });
     sound.playIceDrill();
     const harvest = Math.min(space, site.deposit);
     site.deposit -= harvest;
@@ -1395,6 +1497,7 @@ export class SimulationManager {
       return;
     }
 
+    this.emitNet({ type: "harvest_water" });
     const water = this.state.rover.waterTank;
     const energyRequired = water * CONFIG.WATER_PROCESS_ENERGY_PER_W;
 
@@ -1461,6 +1564,7 @@ export class SimulationManager {
       return;
     }
 
+    this.emitNet({ type: "repair", targetId: "rover" });
     sound.playRepair();
     this.state.energy -= CONFIG.ROVER.repairEnergy;
     this.state.rover.damage = 0;
@@ -1601,6 +1705,11 @@ export class SimulationManager {
     const st = this.state;
     const step = def ? currentStep(def, st.story) : null;
     if (!def || !step || st.phase !== "playing") return;
+    if (a.id !== "info") {
+      const net: SimNetAction = { type: "story_action", actionId: a.id };
+      if ("index" in a) net.index = a.index;
+      this.emitNet(net);
+    }
     const s = st.story;
     switch (a.id) {
       case "survey": {
@@ -1880,6 +1989,7 @@ export class SimulationManager {
       this.addToast(`Signal too weak (${this.aimSignal()}%). Aim closer to Earth.`, "warn");
       return;
     }
+    this.emitNet({ type: "activate_antenna" });
     s.aiming = false;
     s.linkLocked = true;
     if (!s.built.includes("earth_link")) s.built.push("earth_link");
@@ -2169,6 +2279,7 @@ export class SimulationManager {
       this.addToast(`Repair needs ${RULES.MODULE_REPAIR_ENERGY} Energy.`, "warn");
       return;
     }
+    this.emitNet({ type: "repair", targetId: id });
     this.state.energy -= RULES.MODULE_REPAIR_ENERGY;
     m.status = "active";
     this.state.stats.moduleRepairs += 1;
@@ -2224,6 +2335,7 @@ export class SimulationManager {
       return;
     }
     if (this.state.airlock.open || this.state.airlock.opening > 0) return;
+    this.emitNet({ type: "open_airlock" });
     this.state.airlock.opening = 0.001;
     sound.playAirlock();
     this.addToast("Airlock cycling...", "info");

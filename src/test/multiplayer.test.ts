@@ -337,6 +337,7 @@ describe("Multiplayer Integration Test Suite", () => {
       repairModule: ReturnType<typeof vi.fn>;
       lockAntenna: ReturnType<typeof vi.fn>;
       unloadWater: ReturnType<typeof vi.fn>;
+      applyRemoteNetAction: ReturnType<typeof vi.fn>;
     };
 
     let client: FrontierClient;
@@ -359,6 +360,7 @@ describe("Multiplayer Integration Test Suite", () => {
         repairModule: vi.fn(),
         lockAntenna: vi.fn(),
         unloadWater: vi.fn(),
+        applyRemoteNetAction: vi.fn(),
       };
 
       const mockWorld = {
@@ -381,42 +383,43 @@ describe("Multiplayer Integration Test Suite", () => {
 
       // Player on foot
       integration.sendLocalPosition();
-      expect(moveSpy).toHaveBeenCalledWith(5, 10, 0.5);
+      expect(moveSpy).toHaveBeenCalledWith(5, 10, 0.5, false);
 
       // Player in rover
       mockSim.state.player.inRover = true;
       integration.sendLocalPosition();
-      expect(moveSpy).toHaveBeenCalledWith(50, 60, 1.2);
+      expect(moveSpy).toHaveBeenCalledWith(50, 60, 1.2, true);
     });
 
     it("handles incoming game action messages and invokes simulation methods", () => {
-      // 1. install_panel
-      integration.handleRemoteAction({ type: "install_panel", targetId: "panel_1" });
-      expect(mockSim.installPanel).toHaveBeenCalledTimes(1);
+      integration.handleRemoteAction({ type: "install_panel" });
+      expect(mockSim.applyRemoteNetAction).toHaveBeenCalledWith({ type: "install_panel" });
 
-      // 2. mine_ice
       integration.handleRemoteAction({ type: "mine_ice", siteId: "1" });
-      expect(mockSim.fillIce).toHaveBeenCalledWith(1);
+      expect(mockSim.applyRemoteNetAction).toHaveBeenCalledWith({
+        type: "mine_ice",
+        siteId: "1",
+      });
 
-      // 3. build_module
       integration.handleRemoteAction({ type: "build_module", moduleId: "A" });
-      expect(mockSim.startBuilding).toHaveBeenCalledWith("A");
+      expect(mockSim.applyRemoteNetAction).toHaveBeenCalledWith({
+        type: "build_module",
+        moduleId: "A",
+      });
 
-      // 4. repair rover
       integration.handleRemoteAction({ type: "repair", targetId: "rover" });
-      expect(mockSim.repairRover).toHaveBeenCalledTimes(1);
+      expect(mockSim.applyRemoteNetAction).toHaveBeenCalledWith({
+        type: "repair",
+        targetId: "rover",
+      });
 
-      // 5. repair module
-      integration.handleRemoteAction({ type: "repair", targetId: "B" });
-      expect(mockSim.repairModule).toHaveBeenCalledWith("B");
+      integration.handleRemoteAction({ type: "activate_antenna" });
+      expect(mockSim.applyRemoteNetAction).toHaveBeenCalledWith({
+        type: "activate_antenna",
+      });
 
-      // 6. activate_antenna
-      integration.handleRemoteAction({ type: "activate_antenna", antennaId: "dish" });
-      expect(mockSim.lockAntenna).toHaveBeenCalledTimes(1);
-
-      // 7. harvest_water
-      integration.handleRemoteAction({ type: "harvest_water", dockId: "refinery" });
-      expect(mockSim.unloadWater).toHaveBeenCalledTimes(1);
+      integration.handleRemoteAction({ type: "harvest_water" });
+      expect(mockSim.applyRemoteNetAction).toHaveBeenCalledWith({ type: "harvest_water" });
     });
 
     it("cleans up intervals and subscriptions on destroy()", () => {

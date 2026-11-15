@@ -317,7 +317,7 @@ export const CONFIG = {
     titleBadge: "LUNAR SOUTH POLE BASE EXPEDITION",
     titleName: "The\nFrontier",
     titleSubtitle:
-      "Establish permanent habitat, hydroponics, and science outposts\nwithin 90 lunar days.",
+      "Solo or online crew — land at the Lunar South Pole, build camps,\nand survive 90 mission days under Artemis Protocol.",
     titleStart: "START MISSION",
     titleChipEnergy: "Harvest Solar Energy",
     titleChipWater: "Extract Sub-surface Ice",

@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { FrontierRoom } from "../rooms/FrontierRoom";
-import { FrontierRoomState, PlayerSchema } from "../schemas/StateSchema";
+import { FrontierRoomState } from "../schemas/StateSchema";
 
 describe("FrontierRoom", () => {
   let room: FrontierRoom;
 
   beforeEach(() => {
     room = new FrontierRoom();
-    // Suppress console logs during testing
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -17,24 +16,26 @@ describe("FrontierRoom", () => {
 
   describe("Room creation and state initialization", () => {
     it("initializes default state and metadata", () => {
-      room.onCreate({ roomCode: "TEST", maxPlayers: 4, chapterId: "ch1" });
+      room.onCreate({ roomCode: "TEST", maxPlayers: 4, chapterId: "chapter1" });
 
       expect(room.state).toBeInstanceOf(FrontierRoomState);
-      expect(room.state.stage).toBe("ch1");
+      expect(room.state.stage).toBe("chapter1");
+      expect(room.state.chapterId).toBe("chapter1");
       expect(room.state.phase).toBe("lobby");
       expect(room.state.day).toBe(1);
-      expect(room.state.energy).toBe(100);
-      expect(room.state.water).toBe(100);
-      expect(room.state.food).toBe(100);
       expect(room.maxClients).toBe(4);
-      expect(room.metadata).toEqual({ roomCode: "TEST" });
+      expect(room.roomCode).toBe("TEST");
+    });
+
+    it("falls back to chapter1 for unknown chapter ids", () => {
+      room.onCreate({ chapterId: "ch1" });
+      expect(room.state.stage).toBe("chapter1");
     });
 
     it("generates a 4-character roomCode if none provided", () => {
       room.onCreate({});
-      expect(room.metadata?.roomCode).toBeDefined();
-      expect(typeof room.metadata?.roomCode).toBe("string");
-      expect(room.metadata?.roomCode.length).toBe(4);
+      expect(room.roomCode).toBeDefined();
+      expect(room.roomCode.length).toBe(4);
     });
 
     it("caps maxClients at 4", () => {
@@ -56,17 +57,18 @@ describe("FrontierRoom", () => {
 
       expect(room.state.players.size).toBe(1);
       const player = room.state.players.get("sess-1");
-      expect(player).toBeDefined();
       expect(player?.name).toBe("Commander");
       expect(player?.seat).toBe(0);
       expect(player?.color).toBe("#7EE0B8");
-      expect(player?.connected).toBe(true);
-      expect(broadcastSpy).toHaveBeenCalledWith("playerJoin", {
-        sessionId: "sess-1",
-        name: "Commander",
-        seat: 0,
-        color: "#7EE0B8",
-      });
+      expect(broadcastSpy).toHaveBeenCalledWith(
+        "playerJoin",
+        expect.objectContaining({
+          sessionId: "sess-1",
+          name: "Commander",
+          seat: 0,
+          color: "#7EE0B8",
+        }),
+      );
     });
 
     it("assigns sequential seats and distinct colors to subsequent players", () => {
@@ -86,11 +88,7 @@ describe("FrontierRoom", () => {
     it("reuses freed seats when a player leaves", async () => {
       room.onJoin({ sessionId: "sess-0" } as any, { name: "P0" });
       room.onJoin({ sessionId: "sess-1" } as any, { name: "P1" });
-
-      // Simulate sess-0 permanently leaving
       room.state.players.delete("sess-0");
-
-      // Next join should get seat 0
       room.onJoin({ sessionId: "sess-2" } as any, { name: "P2" });
       expect(room.state.players.get("sess-2")?.seat).toBe(0);
     });
@@ -101,14 +99,13 @@ describe("FrontierRoom", () => {
     let client2: any;
 
     beforeEach(() => {
-      room.onCreate({ roomCode: "TEST" });
+      room.onCreate({ roomCode: "TEST", chapterId: "chapter1" });
       client1 = { sessionId: "c1" };
       client2 = { sessionId: "c2" };
       room.onJoin(client1, { name: "Alice" });
       room.onJoin(client2, { name: "Bob" });
     });
 
-    // Helper to invoke registered onMessage handlers
     const invokeHandler = (type: string, client: any, data?: any) => {
       const handlers = (room as any).onMessageHandlers;
       if (handlers instanceof Map) {
@@ -120,11 +117,12 @@ describe("FrontierRoom", () => {
     };
 
     it("handles move message and updates player position", () => {
-      invokeHandler("move", client1, { x: 12.5, z: -45.2, rotation: 1.57 });
+      invokeHandler("move", client1, { x: 12.5, z: -45.2, rotation: 1.57, inRover: true });
       const p1 = room.state.players.get("c1");
       expect(p1?.x).toBeCloseTo(12.5);
       expect(p1?.z).toBeCloseTo(-45.2);
       expect(p1?.rotation).toBeCloseTo(1.57);
+      expect(p1?.inRover).toBe(true);
     });
 
     it("ignores invalid move message data", () => {
@@ -134,14 +132,17 @@ describe("FrontierRoom", () => {
       expect(p1?.z).toBe(0);
     });
 
-    it("broadcasts game actions to other clients", () => {
+    it("broadcasts game actions only while playing", () => {
       const broadcastSpy = vi.spyOn(room, "broadcast");
       invokeHandler("action", client1, { type: "mine_ice", siteId: "site-a" });
+      expect(broadcastSpy).not.toHaveBeenCalled();
 
+      room.state.phase = "playing";
+      invokeHandler("action", client1, { type: "mine_ice", siteId: "site-a" });
       expect(broadcastSpy).toHaveBeenCalledWith(
         "action",
         { sender: "c1", type: "mine_ice", siteId: "site-a" },
-        { except: client1 }
+        { except: client1 },
       );
     });
 
@@ -160,7 +161,6 @@ describe("FrontierRoom", () => {
     it("rejects non-preset chat messages (child safety)", () => {
       const broadcastSpy = vi.spyOn(room, "broadcast");
       invokeHandler("chat", client1, { message: "Arbitrary unapproved text!" });
-
       expect(broadcastSpy).not.toHaveBeenCalled();
     });
 
@@ -176,29 +176,49 @@ describe("FrontierRoom", () => {
       });
     });
 
-    it("broadcasts chapter votes", () => {
+    it("stores and broadcasts chapter votes", () => {
       const broadcastSpy = vi.spyOn(room, "broadcast");
-      invokeHandler("vote", client1, { chapterId: "chapter-2" });
+      invokeHandler("vote", client1, { chapterId: "chapter2" });
 
+      expect(room.state.players.get("c1")?.vote).toBe("chapter2");
       expect(broadcastSpy).toHaveBeenCalledWith("vote", {
         sender: "c1",
-        chapterId: "chapter-2",
+        chapterId: "chapter2",
       });
     });
 
-    it("handles ready toggle and triggers gameStart when all ready", () => {
+    it("rejects invalid chapter votes", () => {
+      const broadcastSpy = vi.spyOn(room, "broadcast");
+      invokeHandler("vote", client1, { chapterId: "chapter-2" });
+      expect(room.state.players.get("c1")?.vote).toBe("");
+      expect(broadcastSpy).not.toHaveBeenCalled();
+    });
+
+    it("toggles ready without auto-starting; host start launches", () => {
       const broadcastSpy = vi.spyOn(room, "broadcast");
 
-      // Alice readies up
       invokeHandler("ready", client1);
       expect(room.state.players.get("c1")?.ready).toBe(true);
-      expect(room.state.phase).toBe("lobby"); // Bob is not ready yet
+      expect(room.state.phase).toBe("lobby");
 
-      // Bob readies up
       invokeHandler("ready", client2);
       expect(room.state.players.get("c2")?.ready).toBe(true);
+      expect(room.state.phase).toBe("lobby");
+
+      invokeHandler("vote", client1, { chapterId: "chapter3" });
+      invokeHandler("vote", client2, { chapterId: "chapter3" });
+      invokeHandler("start", client1, { chapterId: "chapter1" });
+
       expect(room.state.phase).toBe("playing");
-      expect(broadcastSpy).toHaveBeenCalledWith("gameStart", {});
+      expect(room.state.chapterId).toBe("chapter3");
+      expect(broadcastSpy).toHaveBeenCalledWith("gameStart", { chapterId: "chapter3" });
+    });
+
+    it("ignores start from non-host", () => {
+      invokeHandler("ready", client1);
+      invokeHandler("ready", client2);
+      invokeHandler("start", client2, { chapterId: "chapter2" });
+      expect(room.state.phase).toBe("lobby");
     });
   });
 
@@ -212,7 +232,6 @@ describe("FrontierRoom", () => {
     });
 
     it("marks player as disconnected upon leave", async () => {
-      // Mock allowReconnection that immediately succeeds (reconnected)
       (room as any).allowReconnection = vi.fn().mockResolvedValue(true);
 
       const leavePromise = room.onLeave(client, false);
@@ -224,7 +243,6 @@ describe("FrontierRoom", () => {
     });
 
     it("removes player if reconnection times out", async () => {
-      // Mock allowReconnection that rejects (timeout)
       (room as any).allowReconnection = vi.fn().mockRejectedValue(new Error("Timeout"));
       const broadcastSpy = vi.spyOn(room, "broadcast");
 

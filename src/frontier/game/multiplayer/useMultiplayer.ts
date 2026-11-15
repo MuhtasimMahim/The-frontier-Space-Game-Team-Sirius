@@ -1,27 +1,23 @@
 /**
  * React hook for multiplayer lifecycle, room management, and state sync.
- *
- * Wraps FrontierClient, manages connection states, bridges incoming events to
- * RemotePlayerManager (for 3D rendering), and dispatches actions to the Colyseus server.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FrontierClient } from "./client";
 import type { RemotePlayerManager } from "./remotePlayers";
 import {
-  ChatPreset,
-  GameAction,
-  PingData,
-  RemotePlayer,
-  RoomCreateOptions,
-} from "./types";
+  looksLikeServerOffline,
+  probeMultiplayerServer,
+  SERVER_OFFLINE_MESSAGE,
+} from "./serverStatus";
+import { ChatPreset, GameAction, PingData, RemotePlayer, RoomCreateOptions } from "./types";
 
 export interface UseMultiplayerOptions {
   serverUrl?: string;
   playerName?: string;
   remotePlayerManager?: RemotePlayerManager | null;
   onAction?: (action: GameAction & { sender: string }) => void;
-  onGameStart?: () => void;
+  onGameStart?: (chapterId: string) => void;
 }
 
 export interface MultiplayerChatEvent {
@@ -41,20 +37,27 @@ export interface MultiplayerState {
   roomCode: string | null;
   sessionId: string | null;
   error: string | null;
+  /** null = not checked yet; true/false after probe or connect attempt */
+  serverOnline: boolean | null;
+  isCheckingServer: boolean;
   recentPing: PingData | null;
   recentChat: MultiplayerChatEvent | null;
+  votes: Record<string, string>;
+  currentVote: string | null;
 }
 
 export interface UseMultiplayerReturn extends MultiplayerState {
   connect: (url?: string) => Promise<void>;
   createRoom: (chapterId?: string, roomCode?: string) => Promise<string | null>;
   joinRoom: (code: string) => Promise<boolean>;
+  checkServer: () => Promise<boolean>;
   sendChat: (preset: ChatPreset) => void;
   sendPing: (x: number, z: number) => void;
   sendReady: () => void;
   sendVote: (chapterId: string) => void;
+  sendStart: (chapterId?: string) => void;
   sendAction: (action: GameAction) => void;
-  sendMove: (x: number, z: number, rotation: number) => void;
+  sendMove: (x: number, z: number, rotation: number, inRover?: boolean) => void;
   disconnect: () => void;
   setRemotePlayerManager: (mgr: RemotePlayerManager | null) => void;
   client: FrontierClient | null;
@@ -66,9 +69,25 @@ const DEFAULT_SERVER_URL =
     ? "ws://localhost:2567"
     : "wss://the-frontier-colyseus.herokuapp.com");
 
-export function useMultiplayer(
-  options: UseMultiplayerOptions = {}
-): UseMultiplayerReturn {
+function playerFromSchema(sessionId: string, raw: Record<string, unknown>): RemotePlayer {
+  const vote = raw["vote"] ? String(raw["vote"]) : "";
+  const player: RemotePlayer = {
+    sessionId,
+    name: String(raw["name"] ?? "Astronaut"),
+    x: Number(raw["x"] ?? 0),
+    z: Number(raw["z"] ?? 0),
+    rotation: Number(raw["rotation"] ?? 0),
+    inRover: Boolean(raw["inRover"]),
+    color: String(raw["color"] ?? "#7EE0B8"),
+    seat: Number(raw["seat"] ?? 0),
+    ready: Boolean(raw["ready"]),
+    connected: raw["connected"] !== false,
+  };
+  if (vote) player.vote = vote;
+  return player;
+}
+
+export function useMultiplayer(options: UseMultiplayerOptions = {}): UseMultiplayerReturn {
   const {
     serverUrl = DEFAULT_SERVER_URL,
     playerName = "Astronaut",
@@ -84,112 +103,154 @@ export function useMultiplayer(
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [serverOnline, setServerOnline] = useState<boolean | null>(null);
+  const [isCheckingServer, setIsCheckingServer] = useState(false);
   const [recentPing, setRecentPing] = useState<PingData | null>(null);
   const [recentChat, setRecentChat] = useState<MultiplayerChatEvent | null>(null);
+  const [votes, setVotes] = useState<Record<string, string>>({});
+  const [currentVote, setCurrentVote] = useState<string | null>(null);
 
   const clientRef = useRef<FrontierClient | null>(null);
   const remoteManagerRef = useRef<RemotePlayerManager | null>(initialRemoteManager);
   const pingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onActionRef = useRef(onAction);
+  const onGameStartRef = useRef(onGameStart);
+  onActionRef.current = onAction;
+  onGameStartRef.current = onGameStart;
 
-  // Update remotePlayerManager reference
   useEffect(() => {
     remoteManagerRef.current = initialRemoteManager;
   }, [initialRemoteManager]);
 
-  const setRemotePlayerManager = useCallback(
-    (mgr: RemotePlayerManager | null) => {
-      remoteManagerRef.current = mgr;
-      // If we already have players in state, add them to the new manager
-      if (mgr) {
-        players.forEach((p) => {
-          if (p.sessionId !== clientRef.current?.sessionId) {
-            mgr.addPlayer(p.sessionId, p.name, p.color, p.seat);
-          }
-        });
-      }
-    },
-    [players]
-  );
+  const setRemotePlayerManager = useCallback((mgr: RemotePlayerManager | null) => {
+    remoteManagerRef.current = mgr;
+  }, []);
 
-  // Initialize FrontierClient instance with callbacks
+  const syncPlayersFromState = useCallback((state: unknown) => {
+    const map = (state as { players?: { forEach: (cb: (v: unknown, k: string) => void) => void } })
+      ?.players;
+    if (!map || typeof map.forEach !== "function") return;
+
+    const next: RemotePlayer[] = [];
+    const nextVotes: Record<string, string> = {};
+    map.forEach((raw, key) => {
+      // Colyseus Schema fields are getters — copy into a plain bag before reading
+      const src = raw as {
+        sessionId?: string;
+        name?: string;
+        x?: number;
+        z?: number;
+        rotation?: number;
+        inRover?: boolean;
+        color?: string;
+        seat?: number;
+        ready?: boolean;
+        connected?: boolean;
+        vote?: string;
+      };
+      const bag: Record<string, unknown> = {
+        name: src.name,
+        x: src.x,
+        z: src.z,
+        rotation: src.rotation,
+        inRover: src.inRover,
+        color: src.color,
+        seat: src.seat,
+        ready: src.ready,
+        connected: src.connected,
+        vote: src.vote,
+      };
+      const p = playerFromSchema(key, bag);
+      next.push(p);
+      if (p.vote) nextVotes[p.sessionId] = p.vote;
+    });
+    next.sort((a, b) => a.seat - b.seat);
+    setPlayers(next);
+    setVotes(nextVotes);
+
+    const sid = clientRef.current?.sessionId;
+    if (sid) {
+      const me = next.find((p) => p.sessionId === sid);
+      setCurrentVote(me?.vote ?? null);
+    }
+  }, []);
+
   useEffect(() => {
     const client = new FrontierClient({
       onPlayerJoin: (player: RemotePlayer) => {
         setPlayers((prev) => {
           const exists = prev.some((p) => p.sessionId === player.sessionId);
           if (exists) {
-            return prev.map((p) => (p.sessionId === player.sessionId ? player : p));
+            return prev.map((p) => (p.sessionId === player.sessionId ? { ...p, ...player } : p));
           }
-          return [...prev, player];
+          return [...prev, player].sort((a, b) => a.seat - b.seat);
         });
 
-        // 3D figure for remote player (skip self)
-        if (
-          remoteManagerRef.current &&
-          player.sessionId !== clientRef.current?.sessionId
-        ) {
+        if (remoteManagerRef.current && player.sessionId !== clientRef.current?.sessionId) {
           remoteManagerRef.current.addPlayer(
             player.sessionId,
             player.name,
             player.color,
-            player.seat
+            player.seat,
           );
         }
       },
 
       onPlayerLeave: (leavingSessionId: string) => {
         setPlayers((prev) => prev.filter((p) => p.sessionId !== leavingSessionId));
-        if (remoteManagerRef.current) {
-          remoteManagerRef.current.removePlayer(leavingSessionId);
-        }
+        setVotes((prev) => {
+          const next = { ...prev };
+          delete next[leavingSessionId];
+          return next;
+        });
+        remoteManagerRef.current?.removePlayer(leavingSessionId);
       },
 
       onPlayerMove: (player: RemotePlayer) => {
         setPlayers((prev) =>
-          prev.map((p) => (p.sessionId === player.sessionId ? player : p))
+          prev.map((p) => (p.sessionId === player.sessionId ? { ...p, ...player } : p)),
         );
-
-        if (
-          remoteManagerRef.current &&
-          player.sessionId !== clientRef.current?.sessionId
-        ) {
+        if (remoteManagerRef.current && player.sessionId !== clientRef.current?.sessionId) {
           remoteManagerRef.current.updatePlayer(
             player.sessionId,
             player.x,
             player.z,
             player.rotation,
-            player.inRover
+            player.inRover,
           );
         }
       },
 
+      onStateChange: (state) => {
+        syncPlayersFromState(state);
+      },
+
       onChat: (chat) => {
         setRecentChat({ ...chat, timestamp: Date.now() });
-
-        if (remoteManagerRef.current) {
-          remoteManagerRef.current.showChat(chat.sender, chat.message);
-        }
+        remoteManagerRef.current?.showChat(chat.sender, chat.message);
       },
 
       onPing: (ping: PingData) => {
         setRecentPing(ping);
-
         if (pingTimeoutRef.current) clearTimeout(pingTimeoutRef.current);
-        pingTimeoutRef.current = setTimeout(() => {
-          setRecentPing(null);
-        }, 5000);
-
-        if (remoteManagerRef.current) {
-          remoteManagerRef.current.showPing(ping.x, ping.z, ping.color);
-        }
+        pingTimeoutRef.current = setTimeout(() => setRecentPing(null), 5000);
+        remoteManagerRef.current?.showPing(ping.x, ping.z, ping.color);
       },
 
       onAction: (act) => {
-        onAction?.(act);
+        onActionRef.current?.(act);
       },
 
-      onGameStart: () => {
-        onGameStart?.();
+      onVote: ({ sender, chapterId }) => {
+        setVotes((prev) => ({ ...prev, [sender]: chapterId }));
+        setPlayers((prev) =>
+          prev.map((p) => (p.sessionId === sender ? { ...p, vote: chapterId } : p)),
+        );
+        if (sender === clientRef.current?.sessionId) setCurrentVote(chapterId);
+      },
+
+      onGameStart: (chapterId: string) => {
+        onGameStartRef.current?.(chapterId);
       },
 
       onReconnect: () => {
@@ -198,7 +259,12 @@ export function useMultiplayer(
       },
 
       onError: (err: Error) => {
-        setError(err.message);
+        if (looksLikeServerOffline(err)) {
+          setServerOnline(false);
+          setError(SERVER_OFFLINE_MESSAGE);
+        } else {
+          setError(err.message);
+        }
         setIsConnecting(false);
       },
     });
@@ -210,9 +276,29 @@ export function useMultiplayer(
       client.disconnect();
       clientRef.current = null;
     };
-  }, [onAction, onGameStart]);
+  }, [syncPlayersFromState]);
 
-  // Connect client to server URL
+  const markOffline = useCallback((err?: unknown) => {
+    setServerOnline(false);
+    setError(
+      looksLikeServerOffline(err) || err == null
+        ? SERVER_OFFLINE_MESSAGE
+        : err instanceof Error
+          ? err.message
+          : String(err),
+    );
+  }, []);
+
+  const checkServer = useCallback(async () => {
+    setIsCheckingServer(true);
+    setError(null);
+    const ok = await probeMultiplayerServer(serverUrl);
+    setServerOnline(ok);
+    if (!ok) setError(SERVER_OFFLINE_MESSAGE);
+    setIsCheckingServer(false);
+    return ok;
+  }, [serverUrl]);
+
   const connect = useCallback(
     async (url?: string) => {
       if (!clientRef.current) return;
@@ -220,17 +306,16 @@ export function useMultiplayer(
       setError(null);
       try {
         await clientRef.current.connect(url || serverUrl);
+        setServerOnline(true);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Failed to connect";
-        setError(msg);
+        markOffline(err);
       } finally {
         setIsConnecting(false);
       }
     },
-    [serverUrl]
+    [serverUrl, markOffline],
   );
 
-  // Create a new multiplayer room
   const createRoom = useCallback(
     async (chapterId = "chapter1", customRoomCode?: string) => {
       if (!clientRef.current) return null;
@@ -238,9 +323,7 @@ export function useMultiplayer(
       setError(null);
       try {
         await clientRef.current.connect(serverUrl);
-        const code =
-          customRoomCode ??
-          Math.random().toString(36).substring(2, 6).toUpperCase();
+        const code = customRoomCode ?? Math.random().toString(36).substring(2, 6).toUpperCase();
 
         const options: RoomCreateOptions & { name: string } = {
           roomCode: code,
@@ -256,19 +339,21 @@ export function useMultiplayer(
         setRoomCode(effectiveCode);
         setSessionId(room.sessionId);
         setIsConnected(true);
+        setServerOnline(true);
         setIsConnecting(false);
+        setVotes({});
+        setCurrentVote(null);
+        syncPlayersFromState(room.state);
         return effectiveCode;
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Room creation failed";
-        setError(msg);
+        markOffline(err);
         setIsConnecting(false);
         return null;
       }
     },
-    [playerName, serverUrl]
+    [playerName, serverUrl, syncPlayersFromState, markOffline],
   );
 
-  // Join an existing room with code
   const joinRoom = useCallback(
     async (code: string) => {
       if (!clientRef.current || !code.trim()) return false;
@@ -284,49 +369,61 @@ export function useMultiplayer(
         setRoomCode(formatted);
         setSessionId(room.sessionId);
         setIsConnected(true);
+        setServerOnline(true);
         setIsConnecting(false);
+        setVotes({});
+        setCurrentVote(null);
+        syncPlayersFromState(room.state);
         return true;
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Failed to join room";
-        setError(msg);
+        markOffline(err);
         setIsConnecting(false);
         return false;
       }
     },
-    [playerName, serverUrl]
+    [playerName, serverUrl, syncPlayersFromState, markOffline],
   );
 
-  // Send quick-chat preset
   const sendChat = useCallback((preset: ChatPreset) => {
     clientRef.current?.sendChat(preset);
   }, []);
 
-  // Send ping marker
   const sendPing = useCallback((x: number, z: number) => {
     clientRef.current?.sendPing(x, z);
   }, []);
 
-  // Send ready toggle
   const sendReady = useCallback(() => {
     clientRef.current?.sendReady();
+    const sid = clientRef.current?.sessionId;
+    if (!sid) return;
+    // Optimistic: schema patches can lag; toggle local ready so Launch unlocks immediately
+    setPlayers((prev) =>
+      prev.map((p) => (p.sessionId === sid ? { ...p, ready: !p.ready } : p))
+    );
   }, []);
 
-  // Send chapter vote
   const sendVote = useCallback((chapterId: string) => {
     clientRef.current?.sendVote(chapterId);
+    const sid = clientRef.current?.sessionId;
+    if (sid) {
+      setVotes((prev) => ({ ...prev, [sid]: chapterId }));
+      setCurrentVote(chapterId);
+      setPlayers((prev) => prev.map((p) => (p.sessionId === sid ? { ...p, vote: chapterId } : p)));
+    }
   }, []);
 
-  // Send game action
+  const sendStart = useCallback((chapterId?: string) => {
+    clientRef.current?.sendStart(chapterId);
+  }, []);
+
   const sendAction = useCallback((action: GameAction) => {
     clientRef.current?.sendAction(action);
   }, []);
 
-  // Send movement update
-  const sendMove = useCallback((x: number, z: number, rotation: number) => {
-    clientRef.current?.sendMove(x, z, rotation);
+  const sendMove = useCallback((x: number, z: number, rotation: number, inRover = false) => {
+    clientRef.current?.sendMove(x, z, rotation, inRover);
   }, []);
 
-  // Disconnect from room and reset
   const disconnect = useCallback(() => {
     clientRef.current?.disconnect();
     setIsConnected(false);
@@ -336,19 +433,16 @@ export function useMultiplayer(
     setSessionId(null);
     setPlayers([]);
     setError(null);
+    setServerOnline(null);
+    setIsCheckingServer(false);
     setRecentPing(null);
     setRecentChat(null);
-    if (remoteManagerRef.current) {
-      remoteManagerRef.current.destroy();
-    }
+    setVotes({});
+    setCurrentVote(null);
+    remoteManagerRef.current?.destroy();
   }, []);
 
-  // Is local player host (seat 0 or first player in room)
-  const isHost = Boolean(
-    sessionId &&
-      (players.find((p) => p.sessionId === sessionId)?.seat === 0 ||
-        (players.length > 0 && players[0]?.sessionId === sessionId))
-  );
+  const isHost = Boolean(sessionId && players.find((p) => p.sessionId === sessionId)?.seat === 0);
 
   return {
     players,
@@ -359,15 +453,21 @@ export function useMultiplayer(
     roomCode,
     sessionId,
     error,
+    serverOnline,
+    isCheckingServer,
     recentPing,
     recentChat,
+    votes,
+    currentVote,
     connect,
     createRoom,
     joinRoom,
+    checkServer,
     sendChat,
     sendPing,
     sendReady,
     sendVote,
+    sendStart,
     sendAction,
     sendMove,
     disconnect,

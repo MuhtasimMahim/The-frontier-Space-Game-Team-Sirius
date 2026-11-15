@@ -10,18 +10,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { UI_COLORS } from "../config";
-import {
-  CHAPTERS,
-  tallyChapterVotes,
-  type ChapterId,
-  type VoteTally,
-} from "../chapters";
-import {
-  ChatPreset,
-  PLAYER_COLORS,
-  type PingData,
-  type RemotePlayer,
-} from "./types";
+import { CHAPTERS, tallyChapterVotes, type ChapterId, type VoteTally } from "../chapters";
+import { ChatPreset, PLAYER_COLORS, type PingData, type RemotePlayer } from "./types";
 
 export type LobbyPlayer = RemotePlayer & {
   ready?: boolean;
@@ -41,12 +31,18 @@ export interface MultiplayerLobbyUIProps {
   currentVote?: ChapterId | null;
   votes?: Record<string, ChapterId>;
   error?: string | null;
+  /** null = checking / unknown; false = backend unreachable */
+  serverOnline?: boolean | null;
+  isCheckingServer?: boolean;
   onCreateRoom: (chapterId?: ChapterId) => void;
   onJoinRoom: (code: string) => void;
   onToggleReady: () => void;
   onVoteChapter: (chapterId: ChapterId) => void;
   onStartGame: () => void;
   onLeaveRoom?: () => void;
+  /** Switch to Solo Expedition when the crew server is down. */
+  onPlaySolo?: () => void;
+  onRetryServer?: () => void;
 }
 
 export interface MultiplayerHUDOverlayProps {
@@ -92,17 +88,20 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
   currentVote,
   votes = {},
   error,
+  serverOnline = null,
+  isCheckingServer = false,
   onCreateRoom,
   onJoinRoom,
   onToggleReady,
   onVoteChapter,
   onStartGame,
   onLeaveRoom,
+  onPlaySolo,
+  onRetryServer,
 }) => {
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [copied, setCopied] = useState(false);
-  const [selectedInitialChapter, setSelectedInitialChapter] =
-    useState<ChapterId>("chapter1");
+  const [selectedInitialChapter, setSelectedInitialChapter] = useState<ChapterId>("chapter1");
 
   // Calculate vote tally
   const allVotes = useMemo(() => {
@@ -149,9 +148,7 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
               <div className="text-xs font-extrabold uppercase tracking-widest text-[#7EE0B8]">
                 Artemis Cooperative Protocol
               </div>
-              <h1 className="text-3xl md:text-4xl font-black mt-1">
-                Multiplayer Crew Lobby
-              </h1>
+              <h1 className="text-3xl md:text-4xl font-black mt-1">Multiplayer Crew Lobby</h1>
             </div>
             {onLeaveRoom && (
               <button
@@ -163,7 +160,47 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
             )}
           </div>
 
-          {error && (
+          {isCheckingServer && (
+            <div className="p-3 rounded-lg bg-[#8FD3FF]/15 border border-[#8FD3FF]/40 text-[#DFE6FF] text-sm">
+              Checking crew server…
+            </div>
+          )}
+
+          {serverOnline === false && (
+            <div className="flex flex-col gap-3 p-4 rounded-[16px] bg-[#EB5050]/15 border border-[#EB5050]/45">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#FF9D9D]" />
+                <span className="text-xs font-extrabold uppercase tracking-widest text-[#FF9D9D]">
+                  Server Offline
+                </span>
+              </div>
+              <p className="text-sm text-[#FFD0D0] leading-relaxed">
+                {error ||
+                  "Crew server is offline right now. Solo Expedition still works — please try that instead."}
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {onPlaySolo && (
+                  <button
+                    onClick={onPlaySolo}
+                    className="px-5 py-2.5 rounded-xl font-black text-sm bg-[#7EE0B8] hover:bg-[#9BF0CE] text-[#0F2A3A] transition cursor-pointer shadow-lg"
+                  >
+                    PLAY SOLO EXPEDITION →
+                  </button>
+                )}
+                {onRetryServer && (
+                  <button
+                    onClick={onRetryServer}
+                    disabled={isCheckingServer}
+                    className="px-4 py-2.5 rounded-xl font-bold text-sm bg-white/10 hover:bg-white/20 text-white transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isCheckingServer ? "Checking…" : "Retry connection"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {error && serverOnline !== false && (
             <div className="p-3 rounded-lg bg-[#EB5050]/20 border border-[#EB5050]/50 text-[#FF9D9D] text-sm">
               {error}
             </div>
@@ -177,19 +214,16 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
                   Host Mission
                 </div>
                 <p className="text-xs text-[#A5AFC8]">
-                  Start a new invite-only room. You will receive a 4-character code
-                  to share with your crew.
+                  Start a new invite-only room. You will receive a 4-character code to share with
+                  your crew.
                 </p>
 
-                <label className="text-xs text-[#DFE6FF] mt-2 font-bold">
-                  Initial Chapter:
-                </label>
+                <label className="text-xs text-[#DFE6FF] mt-2 font-bold">Initial Chapter:</label>
                 <select
                   value={selectedInitialChapter}
-                  onChange={(e) =>
-                    setSelectedInitialChapter(e.target.value as ChapterId)
-                  }
-                  className="bg-[#121A30] border border-white/20 rounded-lg p-2 text-xs text-white cursor-pointer focus:outline-none focus:border-[#7EE0B8]"
+                  onChange={(e) => setSelectedInitialChapter(e.target.value as ChapterId)}
+                  disabled={serverOnline === false}
+                  className="bg-[#121A30] border border-white/20 rounded-lg p-2 text-xs text-white cursor-pointer focus:outline-none focus:border-[#7EE0B8] disabled:opacity-50"
                 >
                   {CHAPTERS.filter((c) => c.status === "playable").map((c) => (
                     <option key={c.id} value={c.id}>
@@ -202,7 +236,7 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
 
               <button
                 onClick={() => onCreateRoom(selectedInitialChapter)}
-                disabled={isConnecting}
+                disabled={isConnecting || isCheckingServer || serverOnline === false}
                 className="w-full py-3 px-4 rounded-xl font-black text-sm bg-[#7EE0B8] hover:bg-[#9BF0CE] text-[#0F2A3A] transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
               >
                 {isConnecting ? "Connecting..." : "CREATE ROOM"}
@@ -222,22 +256,26 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
                   Enter the 4-character room code from your expedition commander.
                 </p>
 
-                <label className="text-xs text-[#DFE6FF] mt-2 font-bold">
-                  Room Code:
-                </label>
+                <label className="text-xs text-[#DFE6FF] mt-2 font-bold">Room Code:</label>
                 <input
                   type="text"
                   maxLength={4}
                   value={joinCodeInput}
                   onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
                   placeholder="e.g. AB12"
-                  className="bg-[#121A30] border border-white/20 rounded-lg p-2.5 text-center font-mono text-xl tracking-widest text-white uppercase focus:outline-none focus:border-[#FFD166]"
+                  disabled={serverOnline === false}
+                  className="bg-[#121A30] border border-white/20 rounded-lg p-2.5 text-center font-mono text-xl tracking-widest text-white uppercase focus:outline-none focus:border-[#FFD166] disabled:opacity-50"
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={isConnecting || joinCodeInput.trim().length < 4}
+                disabled={
+                  isConnecting ||
+                  isCheckingServer ||
+                  serverOnline === false ||
+                  joinCodeInput.trim().length < 4
+                }
                 className="w-full py-3 px-4 rounded-xl font-black text-sm bg-[#FFD166] hover:bg-[#FFE08A] text-[#0F2A3A] transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
               >
                 {isConnecting ? "Joining..." : "JOIN MISSION"}
@@ -262,17 +300,13 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
                 Connected · 4-Seat Polar Roster
               </span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-black mt-1">
-              Mission Launch Control
-            </h1>
+            <h1 className="text-2xl md:text-3xl font-black mt-1">Mission Launch Control</h1>
           </div>
 
           {/* Large Copyable Room Code */}
           <div className="flex items-center gap-3 bg-[#080C1A]/80 border border-white/15 px-4 py-2 rounded-xl">
             <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-bold text-[#A5AFC8]">
-                Room Code
-              </span>
+              <span className="text-[10px] uppercase font-bold text-[#A5AFC8]">Room Code</span>
               <span className="font-mono text-2xl md:text-3xl font-black tracking-widest text-[#7EE0B8]">
                 {roomCode}
               </span>
@@ -301,8 +335,7 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[0, 1, 2, 3].map((seatIndex) => {
               const player = players.find((p) => p.seat === seatIndex);
-              const color =
-                player?.color ?? PLAYER_COLORS[seatIndex % PLAYER_COLORS.length];
+              const color = player?.color ?? PLAYER_COLORS[seatIndex % PLAYER_COLORS.length];
               const isLocal = player?.sessionId === localSessionId;
               const playerVote = player ? votes[player.sessionId] : undefined;
 
@@ -333,9 +366,7 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
                           className="w-3.5 h-3.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: color }}
                         />
-                        <span className="font-bold text-sm truncate">
-                          {player.name}
-                        </span>
+                        <span className="font-bold text-sm truncate">{player.name}</span>
                       </div>
                       <div className="text-[11px] text-[#A5AFC8] mt-0.5 truncate">
                         {SEAT_ROLES[seatIndex]}
@@ -372,12 +403,8 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
                     Seat {seatIndex + 1}
                   </span>
                   <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
-                  <span className="text-xs text-white/40 italic">
-                    Open Slot
-                  </span>
-                  <span className="text-[10px] text-white/30">
-                    {SEAT_ROLES[seatIndex]}
-                  </span>
+                  <span className="text-xs text-white/40 italic">Open Slot</span>
+                  <span className="text-[10px] text-white/30">{SEAT_ROLES[seatIndex]}</span>
                 </div>
               );
             })}
@@ -422,15 +449,11 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
                     <div className="text-[10px] font-bold uppercase text-[#7EE0B8]">
                       {c.number ? `Ch ${c.number}` : "Sandbox"}
                     </div>
-                    <div className="font-bold text-xs truncate mt-0.5">
-                      {c.title}
-                    </div>
+                    <div className="font-bold text-xs truncate mt-0.5">{c.title}</div>
                   </div>
                   <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/10 text-[11px]">
                     <span className="text-[#A5AFC8]">Votes</span>
-                    <span className="font-bold font-mono-num text-[#FFD166]">
-                      {voteCount}
-                    </span>
+                    <span className="font-bold font-mono-num text-[#FFD166]">{voteCount}</span>
                   </div>
                 </button>
               );
@@ -475,9 +498,7 @@ export const MultiplayerLobbyUI: React.FC<MultiplayerLobbyUIProps> = ({
               >
                 {allReady
                   ? "LAUNCH EXPEDITION"
-                  : `WAITING FOR CREW (${players.filter((p) => p.ready).length}/${
-                      players.length
-                    })`}
+                  : `WAITING FOR CREW (${players.filter((p) => p.ready).length}/${players.length})`}
               </button>
             ) : (
               <div className="text-xs text-[#A5AFC8] italic px-3 py-2 bg-[#080C1A]/40 rounded-xl border border-white/5">
@@ -508,11 +529,7 @@ export const MultiplayerHUDOverlay: React.FC<MultiplayerHUDOverlayProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if user is typing in an input
       const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      ) {
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
         return;
       }
 
@@ -548,7 +565,8 @@ export const MultiplayerHUDOverlay: React.FC<MultiplayerHUDOverlayProps> = ({
 
       {/* Ping Notification Toast */}
       {recentPing && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-xl bg-[#121A30]/95 border text-white text-xs font-bold shadow-2xl backdrop-blur-md animate-bounce"
+        <div
+          className="fixed top-14 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-xl bg-[#121A30]/95 border text-white text-xs font-bold shadow-2xl backdrop-blur-md animate-bounce"
           style={{ borderColor: recentPing.color }}
         >
           <span
@@ -634,9 +652,7 @@ export const MultiplayerHUDOverlay: React.FC<MultiplayerHUDOverlayProps> = ({
                   className="py-2.5 px-3 rounded-xl bg-[#080C1A]/70 hover:bg-[#202C4C] border border-white/10 hover:border-[#7EE0B8] text-left text-xs font-bold transition cursor-pointer flex items-center justify-between"
                 >
                   <span>{item.label}</span>
-                  <span className="text-[10px] text-[#A5AFC8] font-mono">
-                    [{item.key}]
-                  </span>
+                  <span className="text-[10px] text-[#A5AFC8] font-mono">[{item.key}]</span>
                 </button>
               ))}
             </div>

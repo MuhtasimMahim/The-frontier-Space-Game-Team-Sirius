@@ -84,14 +84,26 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "viewport",
         content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
       },
-      { title: "The Frontier - Lunar Base Survival Simulation" },
-      { name: "description", content: "Land on the Moon, build your base, and survive." },
-      { name: "author", content: "Lovable" },
+      { title: "The Frontier — Lunar South Pole Survival" },
+      {
+        name: "description",
+        content:
+          "Play solo or with an online crew. Land at the Lunar South Pole, build camps, and survive under Artemis Protocol.",
+      },
+      { name: "author", content: "Team Sirius" },
       { property: "og:title", content: "The Frontier" },
-      { property: "og:description", content: "Land on the Moon, build your base, and survive." },
+      {
+        property: "og:description",
+        content:
+          "Solo or online crew lunar survival — Chapters 1–4 across Nobile, Mons Mouton, Malapert, and Cabeus.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "The Frontier" },
+      {
+        name: "twitter:description",
+        content: "Lunar South Pole base survival — solo expedition or online crew.",
+      },
     ],
     links: [
       {

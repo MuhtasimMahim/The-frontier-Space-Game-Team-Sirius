@@ -82,4 +82,16 @@ describe("Chapter catalog & crew votes", () => {
     expect(sim.state.phase).toBe("selecting");
     expect(sim.state.missionMode).toBe("full");
   });
+
+  it("online lobby mode opens chapters phase without hotseat votes", () => {
+    const sim = new SimulationManager(10);
+    sim.openChapterSelect("online");
+    expect(sim.state.phase).toBe("chapters");
+    expect(sim.state.playMode).toBe("online");
+
+    sim.startVotedChapter("chapter2");
+    expect(sim.state.phase).toBe("briefing");
+    expect(sim.state.missionMode).toBe("chapter2");
+    expect(sim.state.playMode).toBe("online");
+  });
 });

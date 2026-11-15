@@ -1,11 +1,5 @@
 import { Client, Room } from "colyseus.js";
-import {
-  ChatPreset,
-  GameAction,
-  PingData,
-  RemotePlayer,
-  RoomCreateOptions,
-} from "./types";
+import { ChatPreset, GameAction, PingData, RemotePlayer, RoomCreateOptions } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,15 +12,17 @@ export interface FrontierClientCallbacks {
   onPing?: (ping: PingData) => void;
   onError?: (err: Error) => void;
   onReconnect?: () => void;
-  onGameStart?: () => void;
+  onGameStart?: (chapterId: string) => void;
   onNewDay?: (day: number) => void;
   onAction?: (action: GameAction & { sender: string }) => void;
+  onVote?: (data: { sender: string; chapterId: string }) => void;
 }
 
 interface MovePayload {
   x: number;
   z: number;
   rotation: number;
+  inRover?: boolean;
 }
 
 // ── FrontierClient ───────────────────────────────────────────────────────────
@@ -70,9 +66,7 @@ export class FrontierClient {
 
   // ── Room management ──────────────────────────────────────────────────────
 
-  public async createRoom(
-    options: RoomCreateOptions & { name?: string }
-  ): Promise<Room> {
+  public async createRoom(options: RoomCreateOptions & { name?: string }): Promise<Room> {
     if (!this.client) {
       throw new Error("Client not connected. Call connect(url) first.");
     }
@@ -83,10 +77,7 @@ export class FrontierClient {
     return room;
   }
 
-  public async joinRoom(
-    code: string,
-    options?: { name?: string }
-  ): Promise<Room> {
+  public async joinRoom(code: string, options?: { name?: string }): Promise<Room> {
     if (!this.client) {
       throw new Error("Client not connected. Call connect(url) first.");
     }
@@ -115,13 +106,13 @@ export class FrontierClient {
   /**
    * Throttled position updates at 15 Hz (~66ms interval).
    */
-  public sendMove(x: number, z: number, rotation: number): void {
+  public sendMove(x: number, z: number, rotation: number, inRover = false): void {
     if (!this.room) return;
 
     const now = Date.now();
     const elapsed = now - this.lastMoveSentTime;
 
-    this.pendingMove = { x, z, rotation };
+    this.pendingMove = { x, z, rotation, inRover };
 
     if (elapsed >= this.MOVE_THROTTLE_MS) {
       this.flushPendingMove();
@@ -165,6 +156,12 @@ export class FrontierClient {
     this.room.send("vote", { chapterId });
   }
 
+  /** Host launches the mission once the crew is ready. */
+  public sendStart(chapterId?: string): void {
+    if (!this.room) return;
+    this.room.send("start", { chapterId });
+  }
+
   // ── Disconnect & Reconnect ───────────────────────────────────────────────
 
   public disconnect(): void {
@@ -190,7 +187,7 @@ export class FrontierClient {
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       this.callbacks.onError?.(
-        new Error(`Failed to reconnect after ${this.maxReconnectAttempts} attempts.`)
+        new Error(`Failed to reconnect after ${this.maxReconnectAttempts} attempts.`),
       );
       return;
     }
@@ -225,8 +222,12 @@ export class FrontierClient {
     this.room = room;
     this.lastRoomId = room.id;
     this.lastSessionId = room.sessionId;
-    this.lastReconnectionToken = (room as unknown as { reconnectionToken?: string }).reconnectionToken ?? null;
+    this.lastReconnectionToken =
+      (room as unknown as { reconnectionToken?: string }).reconnectionToken ?? null;
     this.reconnectAttempts = 0;
+    if (typeof window !== "undefined" && import.meta.env.DEV) {
+      (window as unknown as { __frontierRoom?: Room }).__frontierRoom = room;
+    }
 
     // Room state change
     room.onStateChange((state) => {
@@ -234,23 +235,31 @@ export class FrontierClient {
 
       // Listen for player mutations if state has players MapSchema
       const players = (state as unknown as { players?: Map<string, unknown> })?.players;
-      if (players && typeof (players as unknown as { onAdd?: Function }).onAdd === "function") {
+      if (
+        players &&
+        typeof (players as unknown as { onAdd?: (...args: unknown[]) => void }).onAdd === "function"
+      ) {
         // Schema listeners if available
-        (players as unknown as { onAdd: (cb: (player: RemotePlayer, key: string) => void) => void }).onAdd(
-          (player: RemotePlayer, key: string) => {
-            this.callbacks.onPlayerJoin?.(player);
-            if (typeof (player as unknown as { onChange?: Function }).onChange === "function") {
-              (player as unknown as { onChange: (cb: () => void) => void }).onChange(() => {
-                this.callbacks.onPlayerMove?.(player);
-              });
-            }
+        (
+          players as unknown as { onAdd: (cb: (player: RemotePlayer, key: string) => void) => void }
+        ).onAdd((player: RemotePlayer, _key: string) => {
+          this.callbacks.onPlayerJoin?.(player);
+          if (
+            typeof (player as unknown as { onChange?: (...args: unknown[]) => void }).onChange ===
+            "function"
+          ) {
+            (player as unknown as { onChange: (cb: () => void) => void }).onChange(() => {
+              this.callbacks.onPlayerMove?.(player);
+            });
           }
-        );
-        (players as unknown as { onRemove: (cb: (player: RemotePlayer, key: string) => void) => void }).onRemove(
-          (_player: RemotePlayer, key: string) => {
-            this.callbacks.onPlayerLeave?.(key);
+        });
+        (
+          players as unknown as {
+            onRemove: (cb: (player: RemotePlayer, key: string) => void) => void;
           }
-        );
+        ).onRemove((_player: RemotePlayer, key: string) => {
+          this.callbacks.onPlayerLeave?.(key);
+        });
       }
     });
 
@@ -263,9 +272,12 @@ export class FrontierClient {
       this.callbacks.onPlayerLeave?.(data.sessionId);
     });
 
-    room.onMessage("chat", (data: { sender: string; name: string; message: string; color: string }) => {
-      this.callbacks.onChat?.(data);
-    });
+    room.onMessage(
+      "chat",
+      (data: { sender: string; name: string; message: string; color: string }) => {
+        this.callbacks.onChat?.(data);
+      },
+    );
 
     room.onMessage("ping", (data: PingData) => {
       this.callbacks.onPing?.(data);
@@ -275,8 +287,12 @@ export class FrontierClient {
       this.callbacks.onAction?.(data);
     });
 
-    room.onMessage("gameStart", () => {
-      this.callbacks.onGameStart?.();
+    room.onMessage("vote", (data: { sender: string; chapterId: string }) => {
+      this.callbacks.onVote?.(data);
+    });
+
+    room.onMessage("gameStart", (data: { chapterId?: string } = {}) => {
+      this.callbacks.onGameStart?.(data?.chapterId ?? "chapter1");
     });
 
     room.onMessage("newDay", (data: { day: number }) => {
