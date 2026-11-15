@@ -7,6 +7,7 @@ import { FrontierClient } from "./client";
 import type { RemotePlayerManager } from "./remotePlayers";
 import {
   looksLikeServerOffline,
+  normalizeMultiplayerUrl,
   probeMultiplayerServer,
   SERVER_OFFLINE_MESSAGE,
 } from "./serverStatus";
@@ -63,11 +64,18 @@ export interface UseMultiplayerReturn extends MultiplayerState {
   client: FrontierClient | null;
 }
 
-const DEFAULT_SERVER_URL =
-  (typeof import.meta !== "undefined" && import.meta.env?.["VITE_MULTIPLAYER_URL"]) ||
-  (typeof window !== "undefined" && window.location.hostname === "localhost"
+const DEFAULT_FALLBACK_URL =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
     ? "ws://localhost:2567"
-    : "wss://the-frontier-colyseus.herokuapp.com");
+    : "wss://the-frontier-colyseus-996f14385e12.herokuapp.com";
+
+const RAW_ENV_URL =
+  typeof import.meta !== "undefined" && import.meta.env?.["VITE_MULTIPLAYER_URL"]
+    ? String(import.meta.env["VITE_MULTIPLAYER_URL"])
+    : undefined;
+
+const DEFAULT_SERVER_URL = normalizeMultiplayerUrl(RAW_ENV_URL || DEFAULT_FALLBACK_URL);
 
 function playerFromSchema(sessionId: string, raw: Record<string, unknown>): RemotePlayer {
   const vote = raw["vote"] ? String(raw["vote"]) : "";
@@ -88,8 +96,8 @@ function playerFromSchema(sessionId: string, raw: Record<string, unknown>): Remo
 }
 
 export function useMultiplayer(options: UseMultiplayerOptions = {}): UseMultiplayerReturn {
+  const serverUrl = normalizeMultiplayerUrl(options.serverUrl || DEFAULT_SERVER_URL);
   const {
-    serverUrl = DEFAULT_SERVER_URL,
     playerName = "Astronaut",
     remotePlayerManager: initialRemoteManager = null,
     onAction,

@@ -7,17 +7,17 @@ const FrontierGame = lazy(() => import("@/frontier/App"));
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "The Frontier — Lunar South Pole Survival" },
+      { title: "The Frontier: 60 Days — Lunar South Pole Survival" },
       {
         name: "description",
         content:
-          "Play solo or with an online crew. Land at the Lunar South Pole, build camps, and survive under Artemis Protocol.",
+          "Play solo or with an online crew. Land at the Lunar South Pole, build camps, and survive 60 days under Artemis Protocol.",
       },
-      { property: "og:title", content: "The Frontier" },
+      { property: "og:title", content: "The Frontier: 60 Days" },
       {
         property: "og:description",
         content:
-          "Solo or online crew lunar survival — Chapters 1–4 across Nobile, Mons Mouton, Malapert, and Cabeus.",
+          "Solo or online crew lunar survival — 60 days across Nobile, Mons Mouton, Malapert, and Cabeus.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -32,7 +32,7 @@ function Index() {
       <div className="text-xs font-bold tracking-[0.25em] uppercase text-[#7EE0B8] mb-3">
         Artemis Protocol
       </div>
-      <div className="text-4xl font-black tracking-tight">The Frontier</div>
+      <div className="text-4xl font-black tracking-tight">The Frontier: 60 Days</div>
       <div className="mt-4 w-10 h-10 rounded-full border-2 border-[#7EE0B8] border-t-transparent animate-spin" />
       <p className="mt-4 text-sm text-[#AAB6DC]">Loading lunar ops…</p>
     </div>

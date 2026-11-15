@@ -1169,12 +1169,12 @@ export class SimulationManager {
       return;
     }
 
-    // Day 90 timeout
+    // Day 60 timeout
     if (
       !isStoryChapter(this.state.missionMode) &&
       missionExpired(this.state.day, CONFIG.TOTAL_DAYS)
     ) {
-      this.onDefeat("90-day Artemis mission window expired.");
+      this.onDefeat("60-day Artemis mission window expired.");
       return;
     }
   }

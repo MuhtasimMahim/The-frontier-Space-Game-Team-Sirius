@@ -3,7 +3,7 @@ import { CONFIG } from "./config";
 
 export const RULES = {
   EVENT_FIRST_DAY: 12,
-  EVENT_LAST_DAY: 84,
+  EVENT_LAST_DAY: 55,
   EVENT_GAP_MIN: 10,
   EVENT_GAP_MAX: 16,
   EVENT_WARN_DAYS: 2,
@@ -90,7 +90,7 @@ export function shouldNotifyOverflow(day: number, lastNotifiedDay: number) {
   return lastNotifiedDay < 0 || day - lastNotifiedDay >= RULES.OVERFLOW_NOTIFY_EVERY;
 }
 
-/** The mission window closes when Day 90 is reached. */
+/** The mission window closes when Day 60 is reached. */
 export function missionExpired(day: number, totalDays: number) {
   return day >= totalDays;
 }

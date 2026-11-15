@@ -154,20 +154,6 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
               </p>
             </div>
           </div>
-
-          {/* Quick Skip Button (Top Right) */}
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-full font-black text-xs sm:text-sm tracking-wide transition-all cursor-pointer flex items-center gap-2 hover:scale-105 active:scale-95 shadow-lg"
-            style={{
-              backgroundColor: video.accent,
-              color: "#080C1A",
-            }}
-            title="Skip story video (Esc)"
-          >
-            <span>Skip Video</span>
-            <span className="text-base">⏭</span>
-          </button>
         </div>
 
         {/* Video Canvas Container */}
@@ -255,7 +241,7 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
             {/* Bottom Primary Action: Skip or Continue */}
             <div className="flex items-center gap-3">
               <span className="text-[11px] text-[#AAB6DC] hidden md:inline">
-                Press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white">Esc</kbd> to skip
+                Press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white">Esc</kbd> to skip intro
               </span>
               <button
                 onClick={onClose}
@@ -265,7 +251,7 @@ export const StoryVideoModal: React.FC<StoryVideoModalProps> = ({
                   color: "#080C1A",
                 }}
               >
-                <span>{hasEnded ? "Continue" : "Skip Story"}</span>
+                <span>{hasEnded ? "Continue" : "Skip Intro"}</span>
                 <span>→</span>
               </button>
             </div>

@@ -23,7 +23,7 @@ describe("design-doc rules", () => {
     expect(a).toEqual(b);
     expect(a[0]).toEqual({ day: 12, kind: "storm" });
     expect(a[1]?.kind).toBe("meteor");
-    expect(a.every((e) => e.day <= 84)).toBe(true);
+    expect(a.every((e) => e.day <= 55)).toBe(true);
   });
   it("charging is 1:1 and limited by base energy", () => {
     expect(chargeStep(2, 1, 10, 50, 100)).toBe(2);
@@ -44,9 +44,9 @@ describe("design-doc rules", () => {
     expect(shouldNotifyOverflow(7, 3)).toBe(false);
     expect(shouldNotifyOverflow(8, 3)).toBe(true);
   });
-  it("mission ends on day 90 itself", () => {
-    expect(missionExpired(89, 90)).toBe(false);
-    expect(missionExpired(90, 90)).toBe(true);
+  it("mission ends on day 60 itself", () => {
+    expect(missionExpired(59, 60)).toBe(false);
+    expect(missionExpired(60, 60)).toBe(true);
   });
   it("hold progress fills over the hold time and resets on release", () => {
     expect(holdStep(0, 1, 2, true)).toBe(0.5);

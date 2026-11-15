@@ -95,7 +95,7 @@ export interface IceSiteDef {
 export const CONFIG = {
   // Time
   DAY_SECONDS: 10,
-  TOTAL_DAYS: 90,
+  TOTAL_DAYS: 60,
   FAST_FORWARD: 2,
   LANDING_SECONDS: 5,
   SITE_SELECT_TIMEOUT: 30,
@@ -314,10 +314,10 @@ export const CONFIG = {
   },
 
   TEXTS: {
-    titleBadge: "LUNAR SOUTH POLE BASE EXPEDITION",
-    titleName: "The\nFrontier",
+    titleBadge: "60-DAY LUNAR BASE EXPEDITION",
+    titleName: "The Frontier\n60 Days",
     titleSubtitle:
-      "Solo or online crew — land at the Lunar South Pole, build camps,\nand survive 90 mission days under Artemis Protocol.",
+      "Solo or online crew — land at the Lunar South Pole, build camps,\nand survive 60 mission days under Artemis Protocol.",
     titleStart: "START MISSION",
     titleChipEnergy: "Harvest Solar Energy",
     titleChipWater: "Extract Sub-surface Ice",

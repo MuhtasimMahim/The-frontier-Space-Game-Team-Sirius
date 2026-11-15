@@ -12,7 +12,13 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "server:install": "npm --prefix server install",
+    "server:build": "npm --prefix server run build",
+    "server:start": "npm --prefix server run start",
+    "heroku-prebuild": "npm --prefix server install",
+    "heroku-postbuild": "npm --prefix server run build",
+    "start": "npm --prefix server run start"
   },
   "overrides": {
     "rolldown": "1.2.1"
@@ -75,7 +81,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
-    "@lovable.dev/vite-tanstack-config": "2.27.2",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",
     "@types/node": "^22.16.5",

@@ -9,7 +9,9 @@ export interface StoryVideoDef {
   durationSeconds: number;
 }
 
-export const STORY_VIDEOS: Record<string, StoryVideoDef> = {
+export type StoryVideoKey = "intro" | "chapter1" | "chapter2" | "chapter3" | "chapter4" | "victory";
+
+export const STORY_VIDEOS: Record<StoryVideoKey, StoryVideoDef> = {
   intro: {
     id: "intro",
     title: "Team Sirius Assemble",
@@ -74,7 +76,7 @@ export const STORY_VIDEOS: Record<string, StoryVideoDef> = {
 
 export function getVideoForChapter(chapterId: string): StoryVideoDef | null {
   if (chapterId in STORY_VIDEOS) {
-    return STORY_VIDEOS[chapterId] ?? null;
+    return STORY_VIDEOS[chapterId as StoryVideoKey] ?? null;
   }
   return null;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   CHAPTERS,
   CREW_SIZE_MAX,
@@ -9,11 +9,8 @@ import {
 } from "../game/chapters";
 import { gameSim, type GameState } from "../game/simulation";
 import { recommendedChapter } from "../game/storyline";
-import { STORY_VIDEOS, getVideoForChapter, type StoryVideoDef } from "../game/storyVideos";
-import { StoryVideoModal } from "./StoryVideoModal";
 
 export const ChapterSelectUI: React.FC<{ state: GameState }> = ({ state }) => {
-  const [activeVideo, setActiveVideo] = useState<StoryVideoDef | null>(null);
   const isCrew = state.playMode === "crew";
   const nextUp = recommendedChapter(state.campaignDone);
   const tally = tallyChapterVotes(state.crewVotes);
@@ -22,9 +19,6 @@ export const ChapterSelectUI: React.FC<{ state: GameState }> = ({ state }) => {
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col p-6 md:p-10 select-none font-gotham text-white luna-gradient overflow-y-auto">
-      {activeVideo && (
-        <StoryVideoModal video={activeVideo} onClose={() => setActiveVideo(null)} />
-      )}
       <div className="max-w-5xl w-full mx-auto flex flex-col gap-6 my-auto">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -40,14 +34,6 @@ export const ChapterSelectUI: React.FC<{ state: GameState }> = ({ state }) => {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setActiveVideo(STORY_VIDEOS.intro)}
-              className="px-5 py-2.5 rounded-full bg-[#7EE0B8]/20 hover:bg-[#7EE0B8]/30 border border-[#7EE0B8]/50 text-[#7EE0B8] text-sm font-bold cursor-pointer flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-md"
-              title="Watch Team Story Trailer"
-            >
-              <span>▶</span>
-              <span>Team Story</span>
-            </button>
             <button
               onClick={() => gameSim.exitToTitle()}
               className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-sm font-bold cursor-pointer transition-colors"
@@ -144,7 +130,6 @@ export const ChapterSelectUI: React.FC<{ state: GameState }> = ({ state }) => {
             const isWinner = isCrew && tally.winner === ch.id;
             const done = state.campaignDone.includes(ch.id);
             const isNext = !locked && nextUp === ch.id;
-            const videoForCh = getVideoForChapter(ch.id);
 
             return (
               <div
@@ -197,21 +182,11 @@ export const ChapterSelectUI: React.FC<{ state: GameState }> = ({ state }) => {
                 <p className="text-sm text-[#DFE6FF] leading-relaxed flex-1">{ch.summary}</p>
 
                 <div className="flex items-center gap-2 mt-1">
-                  {videoForCh && (
-                    <button
-                      onClick={() => setActiveVideo(videoForCh)}
-                      className="px-4 py-3 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1.5 transition-all hover:scale-105 active:scale-95 shrink-0"
-                      title={`Watch ${ch.title} Story Video`}
-                    >
-                      <span className="text-[#FFD166]">▶</span>
-                      <span>Story</span>
-                    </button>
-                  )}
                   {!isCrew && (
                     <button
                       disabled={locked}
                       onClick={() => enterSoloChapter(ch.id)}
-                      className={`flex-1 py-3 rounded-full font-extrabold text-sm uppercase tracking-wide cursor-pointer transition-all ${
+                      className={`w-full py-3 rounded-full font-extrabold text-sm uppercase tracking-wide cursor-pointer transition-all ${
                         locked
                           ? "bg-white/10 text-white/40 cursor-not-allowed"
                           : "bg-[#7EE0B8] hover:bg-[#68d4a7] text-[#0F2A3A] hover:scale-[1.02] active:scale-95"

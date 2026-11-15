@@ -186,11 +186,24 @@ const StoryBriefing: React.FC<{ state: GameState; def: StoryChapterDef }> = ({ s
 // Title Screen (Matches TitleUI.luau)
 export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
   const [showIntroVideo, setShowIntroVideo] = useState<boolean>(false);
+  const [pendingMode, setPendingMode] = useState<"solo" | "online" | "crew" | null>(null);
+
+  const startModeWithIntro = (mode: "solo" | "online" | "crew") => {
+    setPendingMode(mode);
+    setShowIntroVideo(true);
+  };
+
+  const handleCloseIntro = () => {
+    setShowIntroVideo(false);
+    const targetMode = pendingMode ?? "solo";
+    setPendingMode(null);
+    gameSim.openChapterSelect(targetMode);
+  };
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-between p-12 select-none font-gotham text-white luna-gradient overflow-hidden">
       {showIntroVideo && (
-        <StoryVideoModal video={STORY_VIDEOS.intro} onClose={() => setShowIntroVideo(false)} />
+        <StoryVideoModal video={STORY_VIDEOS.intro} onClose={handleCloseIntro} />
       )}
       {/* Left Column: Badge, Title, Subtitle, Start Buttons, Resource Chips */}
       <div className="max-w-2xl flex flex-col gap-5 z-10">
@@ -215,7 +228,7 @@ export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
         {/* Solo / Online Crew / Same-device vote / Resume */}
         <div className="flex flex-wrap items-center gap-3 mt-2">
           <button
-            onClick={() => gameSim.openChapterSelect("solo")}
+            onClick={() => startModeWithIntro("solo")}
             className="px-7 h-16 rounded-full bg-[#7EE0B8] hover:bg-[#68d4a7] text-[#0F2A3A] font-extrabold text-xl tracking-wide shadow-2xl transition-all cursor-pointer flex items-center justify-center gap-3 hover:scale-105 active:scale-95 uppercase"
           >
             <span>Solo Expedition</span>
@@ -223,7 +236,7 @@ export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
           </button>
 
           <button
-            onClick={() => gameSim.openChapterSelect("online")}
+            onClick={() => startModeWithIntro("online")}
             className="px-7 h-16 rounded-full bg-[#8FD3FF] hover:bg-[#6fc4f5] text-[#0F2A3A] font-extrabold text-xl tracking-wide shadow-2xl transition-all cursor-pointer flex items-center justify-center gap-3 hover:scale-105 active:scale-95 uppercase"
           >
             <span>Online Crew</span>
@@ -231,19 +244,10 @@ export const TitleUI: React.FC<{ state: GameState }> = ({ state }) => {
           </button>
 
           <button
-            onClick={() => gameSim.openChapterSelect("crew")}
+            onClick={() => startModeWithIntro("crew")}
             className="px-5 h-14 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white font-bold text-sm tracking-wide shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-105 active:scale-95 uppercase"
           >
             <span>Same Device</span>
-          </button>
-
-          <button
-            onClick={() => setShowIntroVideo(true)}
-            className="px-5 h-14 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white font-bold text-sm tracking-wide shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-105 active:scale-95 uppercase"
-            title="Watch Animated Team Story Intro"
-          >
-            <span className="text-[#FFD166]">▶</span>
-            <span>Story Video</span>
           </button>
 
           {state.hasCheckpoint && state.checkpointInfo && (
@@ -655,7 +659,7 @@ export const ResultUI: React.FC<{ state: GameState }> = ({ state }) => {
                   : state.modules.C.status === "active"
                     ? "All four lunar network bases and Research Lab C are operational! Humanity’s permanent outpost is secured on the lunar frontier."
                     : "All four lunar network outposts operated together for 5 consecutive days! Humanity’s cooperative foothold on the Moon is secured."
-                : "Water or food supplies ran empty for 4 days, or the 90-day window closed. Restore your last checkpoint to try a new resource plan!"}
+                : "Water or food supplies ran empty for 4 days, or the 60-day window closed. Restore your last checkpoint to try a new resource plan!"}
             </p>
           </div>
 

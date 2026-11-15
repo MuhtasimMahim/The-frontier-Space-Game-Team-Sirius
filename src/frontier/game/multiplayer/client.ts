@@ -59,8 +59,9 @@ export class FrontierClient {
   // ── Connection ───────────────────────────────────────────────────────────
 
   public async connect(url: string): Promise<void> {
-    this.serverUrl = url;
-    this.client = new Client(url);
+    const targetUrl = url.trim().replace(/^was:\/\//i, "wss://").replace(/\/+$/, "");
+    this.serverUrl = targetUrl;
+    this.client = new Client(targetUrl);
     this.intentionalDisconnect = false;
   }
 

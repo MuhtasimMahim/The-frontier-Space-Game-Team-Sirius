@@ -11,7 +11,6 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
   return (
@@ -38,9 +37,6 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -84,22 +80,22 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "viewport",
         content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
       },
-      { title: "The Frontier — Lunar South Pole Survival" },
+      { title: "The Frontier: 60 Days — Lunar South Pole Survival" },
       {
         name: "description",
         content:
-          "Play solo or with an online crew. Land at the Lunar South Pole, build camps, and survive under Artemis Protocol.",
+          "Play solo or with an online crew. Land at the Lunar South Pole, build camps, and survive 60 days under Artemis Protocol.",
       },
       { name: "author", content: "Team Sirius" },
-      { property: "og:title", content: "The Frontier" },
+      { property: "og:title", content: "The Frontier: 60 Days" },
       {
         property: "og:description",
         content:
-          "Solo or online crew lunar survival — Chapters 1–4 across Nobile, Mons Mouton, Malapert, and Cabeus.",
+          "Solo or online crew lunar survival — 60 days across Nobile, Mons Mouton, Malapert, and Cabeus.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "The Frontier" },
+      { name: "twitter:title", content: "The Frontier: 60 Days" },
       {
         name: "twitter:description",
         content: "Lunar South Pole base survival — solo expedition or online crew.",
