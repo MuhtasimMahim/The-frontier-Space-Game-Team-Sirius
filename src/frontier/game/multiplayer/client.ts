@@ -1,0 +1,297 @@
+import { Client, Room } from "colyseus.js";
+import {
+  ChatPreset,
+  GameAction,
+  PingData,
+  RemotePlayer,
+  RoomCreateOptions,
+} from "./types";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export interface FrontierClientCallbacks {
+  onPlayerJoin?: (player: RemotePlayer) => void;
+  onPlayerLeave?: (sessionId: string) => void;
+  onPlayerMove?: (player: RemotePlayer) => void;
+  onStateChange?: (state: unknown) => void;
+  onChat?: (chat: { sender: string; name: string; message: string; color: string }) => void;
+  onPing?: (ping: PingData) => void;
+  onError?: (err: Error) => void;
+  onReconnect?: () => void;
+  onGameStart?: () => void;
+  onNewDay?: (day: number) => void;
+  onAction?: (action: GameAction & { sender: string }) => void;
+}
+
+interface MovePayload {
+  x: number;
+  z: number;
+  rotation: number;
+}
+
+// ── FrontierClient ───────────────────────────────────────────────────────────
+
+export class FrontierClient {
+  private client: Client | null = null;
+  private room: Room | null = null;
+  private serverUrl: string = "";
+  private lastRoomId: string | null = null;
+  private lastSessionId: string | null = null;
+  private lastReconnectionToken: string | null = null;
+  private intentionalDisconnect = false;
+
+  // Reconnection backoff
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Throttled movement (15 Hz = ~66.6ms)
+  private readonly MOVE_THROTTLE_MS = 66;
+  private lastMoveSentTime = 0;
+  private pendingMove: MovePayload | null = null;
+  private moveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Event callbacks
+  public callbacks: FrontierClientCallbacks = {};
+
+  constructor(callbacks?: FrontierClientCallbacks) {
+    if (callbacks) {
+      this.callbacks = callbacks;
+    }
+  }
+
+  // ── Connection ───────────────────────────────────────────────────────────
+
+  public async connect(url: string): Promise<void> {
+    this.serverUrl = url;
+    this.client = new Client(url);
+    this.intentionalDisconnect = false;
+  }
+
+  // ── Room management ──────────────────────────────────────────────────────
+
+  public async createRoom(
+    options: RoomCreateOptions & { name?: string }
+  ): Promise<Room> {
+    if (!this.client) {
+      throw new Error("Client not connected. Call connect(url) first.");
+    }
+
+    this.intentionalDisconnect = false;
+    const room = await this.client.create("frontier", options);
+    this.attachRoomHandlers(room);
+    return room;
+  }
+
+  public async joinRoom(
+    code: string,
+    options?: { name?: string }
+  ): Promise<Room> {
+    if (!this.client) {
+      throw new Error("Client not connected. Call connect(url) first.");
+    }
+
+    this.intentionalDisconnect = false;
+    // Join by roomCode matching metadata or reservation
+    // Colyseus 0.15 allows joinOrCreate or join with options
+    const room = await this.client.join("frontier", {
+      roomCode: code,
+      ...options,
+    });
+    this.attachRoomHandlers(room);
+    return room;
+  }
+
+  public get currentRoom(): Room | null {
+    return this.room;
+  }
+
+  public get sessionId(): string | null {
+    return this.room?.sessionId ?? null;
+  }
+
+  // ── Senders ──────────────────────────────────────────────────────────────
+
+  /**
+   * Throttled position updates at 15 Hz (~66ms interval).
+   */
+  public sendMove(x: number, z: number, rotation: number): void {
+    if (!this.room) return;
+
+    const now = Date.now();
+    const elapsed = now - this.lastMoveSentTime;
+
+    this.pendingMove = { x, z, rotation };
+
+    if (elapsed >= this.MOVE_THROTTLE_MS) {
+      this.flushPendingMove();
+    } else if (!this.moveTimer) {
+      this.moveTimer = setTimeout(() => {
+        this.moveTimer = null;
+        this.flushPendingMove();
+      }, this.MOVE_THROTTLE_MS - elapsed);
+    }
+  }
+
+  private flushPendingMove(): void {
+    if (!this.room || !this.pendingMove) return;
+    this.room.send("move", this.pendingMove);
+    this.lastMoveSentTime = Date.now();
+    this.pendingMove = null;
+  }
+
+  public sendAction(action: GameAction): void {
+    if (!this.room) return;
+    this.room.send("action", action);
+  }
+
+  public sendChat(preset: ChatPreset): void {
+    if (!this.room) return;
+    this.room.send("chat", { message: preset });
+  }
+
+  public sendPing(x: number, z: number): void {
+    if (!this.room) return;
+    this.room.send("ping", { x, z });
+  }
+
+  public sendReady(): void {
+    if (!this.room) return;
+    this.room.send("ready");
+  }
+
+  public sendVote(chapterId: string): void {
+    if (!this.room) return;
+    this.room.send("vote", { chapterId });
+  }
+
+  // ── Disconnect & Reconnect ───────────────────────────────────────────────
+
+  public disconnect(): void {
+    this.intentionalDisconnect = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.moveTimer) {
+      clearTimeout(this.moveTimer);
+      this.moveTimer = null;
+    }
+    if (this.room) {
+      this.room.leave();
+      this.room = null;
+    }
+    this.client = null;
+    this.reconnectAttempts = 0;
+  }
+
+  private async attemptAutoReconnect(): Promise<void> {
+    if (this.intentionalDisconnect || !this.client) return;
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.callbacks.onError?.(
+        new Error(`Failed to reconnect after ${this.maxReconnectAttempts} attempts.`)
+      );
+      return;
+    }
+
+    const backoffMs = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 16000);
+    this.reconnectAttempts++;
+
+    this.reconnectTimer = setTimeout(async () => {
+      try {
+        if (!this.client || this.intentionalDisconnect) return;
+
+        let reconnectedRoom: Room | null = null;
+        if (this.lastReconnectionToken) {
+          reconnectedRoom = await this.client.reconnect(this.lastReconnectionToken);
+        }
+
+        if (reconnectedRoom) {
+          this.reconnectAttempts = 0;
+          this.attachRoomHandlers(reconnectedRoom);
+          this.callbacks.onReconnect?.();
+        }
+      } catch (err) {
+        // Try again with next backoff
+        this.attemptAutoReconnect();
+      }
+    }, backoffMs);
+  }
+
+  // ── Internal room wiring ─────────────────────────────────────────────────
+
+  private attachRoomHandlers(room: Room): void {
+    this.room = room;
+    this.lastRoomId = room.id;
+    this.lastSessionId = room.sessionId;
+    this.lastReconnectionToken = (room as unknown as { reconnectionToken?: string }).reconnectionToken ?? null;
+    this.reconnectAttempts = 0;
+
+    // Room state change
+    room.onStateChange((state) => {
+      this.callbacks.onStateChange?.(state);
+
+      // Listen for player mutations if state has players MapSchema
+      const players = (state as unknown as { players?: Map<string, unknown> })?.players;
+      if (players && typeof (players as unknown as { onAdd?: Function }).onAdd === "function") {
+        // Schema listeners if available
+        (players as unknown as { onAdd: (cb: (player: RemotePlayer, key: string) => void) => void }).onAdd(
+          (player: RemotePlayer, key: string) => {
+            this.callbacks.onPlayerJoin?.(player);
+            if (typeof (player as unknown as { onChange?: Function }).onChange === "function") {
+              (player as unknown as { onChange: (cb: () => void) => void }).onChange(() => {
+                this.callbacks.onPlayerMove?.(player);
+              });
+            }
+          }
+        );
+        (players as unknown as { onRemove: (cb: (player: RemotePlayer, key: string) => void) => void }).onRemove(
+          (_player: RemotePlayer, key: string) => {
+            this.callbacks.onPlayerLeave?.(key);
+          }
+        );
+      }
+    });
+
+    // Custom broadcast messages
+    room.onMessage("playerJoin", (data: RemotePlayer) => {
+      this.callbacks.onPlayerJoin?.(data);
+    });
+
+    room.onMessage("playerLeave", (data: { sessionId: string }) => {
+      this.callbacks.onPlayerLeave?.(data.sessionId);
+    });
+
+    room.onMessage("chat", (data: { sender: string; name: string; message: string; color: string }) => {
+      this.callbacks.onChat?.(data);
+    });
+
+    room.onMessage("ping", (data: PingData) => {
+      this.callbacks.onPing?.(data);
+    });
+
+    room.onMessage("action", (data: GameAction & { sender: string }) => {
+      this.callbacks.onAction?.(data);
+    });
+
+    room.onMessage("gameStart", () => {
+      this.callbacks.onGameStart?.();
+    });
+
+    room.onMessage("newDay", (data: { day: number }) => {
+      this.callbacks.onNewDay?.(data.day);
+    });
+
+    room.onLeave((code) => {
+      this.room = null;
+      if (!this.intentionalDisconnect && code !== 1000) {
+        this.attemptAutoReconnect();
+      }
+    });
+
+    room.onError((code, message) => {
+      this.callbacks.onError?.(new Error(`Colyseus room error (${code}): ${message}`));
+    });
+  }
+}
