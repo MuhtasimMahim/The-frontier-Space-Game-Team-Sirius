@@ -169,43 +169,54 @@ export class RemotePlayerEntity {
 
     // ---- torso -------------------------------------------------------
     const P = this.entity;
-    part(P, "box", [0.62, 0.7, 0.42], [0, 1.15, 0], suit, [0, 0, 0], "Torso");
-    part(P, "box", [0.5, 0.25, 0.4], [0, 0.78, 0], joint, [0, 0, 0], "Waist");
-    part(P, "box", [0.36, 0.22, 0.06], [0, 1.2, 0.22], pack, [0, 0, 0], "ChestUnit");
+    part(P, "capsule", [0.58, 0.54, 0.44], [0, 1.24, 0], suit, [0, 0, 0], "Torso");
+    part(P, "sphere", [0.26, 0.22, 0.26], [-0.34, 1.44, 0], suit, [0, 0, 0], "ShoulderL");
+    part(P, "sphere", [0.26, 0.22, 0.26], [0.34, 1.44, 0], suit, [0, 0, 0], "ShoulderR");
+    part(P, "cylinder", [0.44, 0.08, 0.44], [0, 1.54, 0], joint, [0, 0, 0], "Collar");
+    part(P, "cylinder", [0.48, 0.20, 0.38], [0, 0.94, 0], joint, [0, 0, 0], "Waist");
+    part(P, "box", [0.34, 0.20, 0.08], [0, 1.22, 0.24], pack, [0, 0, 0], "ChestUnit");
     // Colour stripes on chest for quick ID
-    part(P, "box", [0.08, 0.06, 0.02], [-0.08, 1.22, 0.255], accentMat, [0, 0, 0], "Badge1");
-    part(P, "box", [0.08, 0.06, 0.02], [0.08, 1.22, 0.255], accentMat, [0, 0, 0], "Badge2");
-    part(P, "box", [0.14, 0.09, 0.01], [0.24, 1.35, 0.215], accentMat, [0, 0, 0], "Patch");
+    part(P, "box", [0.08, 0.06, 0.02], [-0.08, 1.22, 0.285], accentMat, [0, 0, 0], "Badge1");
+    part(P, "box", [0.08, 0.06, 0.02], [0.08, 1.22, 0.285], accentMat, [0, 0, 0], "Badge2");
+    part(P, "box", [0.14, 0.09, 0.01], [0.24, 1.35, 0.225], accentMat, [0, 0, 0], "Patch");
 
     // ---- helmet ------------------------------------------------------
-    part(P, "sphere", [0.5, 0.5, 0.5], [0, 1.72, 0], suit, [0, 0, 0], "Helmet");
-    part(P, "sphere", [0.38, 0.3, 0.2], [0, 1.73, 0.17], visor, [0, 0, 0], "Visor");
-    part(P, "box", [0.06, 0.04, 0.06], [0.2, 1.88, 0.12], accentMat, [0, 0, 0], "HLamp");
+    part(P, "sphere", [0.54, 0.52, 0.52], [0, 1.74, 0], suit, [0, 0, 0], "Helmet");
+    part(P, "sphere", [0.44, 0.36, 0.34], [0, 1.74, 0.15], visor, [0, 0, 0], "Visor");
+    part(P, "box", [0.40, 0.05, 0.14], [0, 1.89, 0.16], suit, [-15, 0, 0], "Brow");
+    part(P, "cylinder", [0.07, 0.10, 0.07], [0.24, 1.85, 0.12], pack, [-70, 0, 0], "HLampMount");
+    part(P, "sphere", [0.06, 0.04, 0.06], [0.24, 1.85, 0.17], accentMat, [0, 0, 0], "HLamp");
 
     // ---- backpack ----------------------------------------------------
-    part(P, "box", [0.58, 0.75, 0.32], [0, 1.18, -0.36], pack, [0, 0, 0], "PLSS");
-    part(P, "box", [0.5, 0.12, 0.3], [0, 1.6, -0.36], joint, [0, 0, 0], "PackTop");
-    part(P, "cylinder", [0.04, 0.3, 0.04], [0.2, 1.75, -0.4], dark, [0, 0, 0], "Antenna");
+    part(P, "box", [0.56, 0.74, 0.30], [0, 1.22, -0.34], pack, [0, 0, 0], "PLSS");
+    part(P, "cylinder", [0.52, 0.10, 0.26], [0, 1.62, -0.34], joint, [0, 0, 0], "PackTop");
+    part(P, "cylinder", [0.04, 0.45, 0.04], [0.22, 1.85, -0.38], dark, [0, 0, 0], "Antenna");
 
     // ---- limbs -------------------------------------------------------
     const makeLimb = (x: number, y: number, len: number, w: number): pc.Entity => {
       const pivot = new pc.Entity("Limb");
       pivot.setLocalPosition(x, y, 0);
       P.addChild(pivot);
-      part(pivot, "box", [w, len * 0.5, w], [0, -len * 0.25, 0], suit);
-      part(pivot, "box", [w * 1.05, 0.1, w * 1.05], [0, -len * 0.5, 0], joint);
-      part(pivot, "box", [w * 0.95, len * 0.45, w * 0.95], [0, -len * 0.75, 0], suit);
+      part(pivot, "cylinder", [w, len * 0.48, w], [0, -len * 0.24, 0], suit);
+      part(pivot, "cylinder", [w * 1.14, 0.08, w * 1.14], [0, -len * 0.5, 0], joint);
+      part(pivot, "cylinder", [w * 0.94, len * 0.44, w * 0.94], [0, -len * 0.74, 0], suit);
       return pivot;
     };
 
     const lArm = makeLimb(-0.42, 1.42, 0.7, 0.18);
     const rArm = makeLimb(0.42, 1.42, 0.7, 0.18);
-    part(lArm, "box", [0.16, 0.14, 0.16], [0, -0.74, 0], dark, [0, 0, 0], "GloveL");
-    part(rArm, "box", [0.16, 0.14, 0.16], [0, -0.74, 0], dark, [0, 0, 0], "GloveR");
-    const lLeg = makeLimb(-0.16, 0.8, 0.72, 0.22);
-    const rLeg = makeLimb(0.16, 0.8, 0.72, 0.22);
-    part(lLeg, "box", [0.26, 0.14, 0.36], [0, -0.74, 0.05], dark, [0, 0, 0], "BootL");
-    part(rLeg, "box", [0.26, 0.14, 0.36], [0, -0.74, 0.05], dark, [0, 0, 0], "BootR");
+    part(lArm, "cylinder", [0.19, 0.05, 0.19], [0, -0.72, 0], joint);
+    part(rArm, "cylinder", [0.19, 0.05, 0.19], [0, -0.72, 0], joint);
+    part(lArm, "capsule", [0.17, 0.20, 0.17], [0, -0.76, 0.02], dark, [0, 0, 0], "GloveL");
+    part(rArm, "capsule", [0.17, 0.20, 0.17], [0, -0.76, 0.02], dark, [0, 0, 0], "GloveR");
+
+    const lLeg = makeLimb(-0.17, 0.82, 0.72, 0.22);
+    const rLeg = makeLimb(0.17, 0.82, 0.72, 0.22);
+    for (const [leg, side] of [[lLeg, "L"], [rLeg, "R"]] as const) {
+      part(leg, "cylinder", [0.24, 0.06, 0.24], [0, -0.66, 0.02], joint);
+      part(leg, "box", [0.26, 0.08, 0.38], [0, -0.74, 0.06], dark, [0, 0, 0], `BootSole${side}`);
+      part(leg, "sphere", [0.25, 0.15, 0.24], [0, -0.70, 0.18], dark, [0, 0, 0], `BootToe${side}`);
+    }
     this.limbs = { lArm, rArm, lLeg, rLeg };
 
     // ---- identification ring under feet ------------------------------

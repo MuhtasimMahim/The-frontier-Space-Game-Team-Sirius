@@ -930,45 +930,76 @@ export class PlayCanvasLunarWorld {
     this.playerEntity = new pc.Entity("PlayerAstronaut");
     this.playerEntity.setPosition(0, 1.0, 6);
     const P = this.playerEntity;
-    const suit = this.mkMat(0.93, 0.93, 0.95, { metal: 0.02, gloss: 0.3 });
-    const joint = this.mkMat(0.75, 0.76, 0.8, { metal: 0.1, gloss: 0.35 });
-    const visor = this.mkMat(0.95, 0.7, 0.2, { metal: 1, gloss: 0.95 });
-    const pack = this.mkMat(0.82, 0.83, 0.86, { metal: 0.2, gloss: 0.4 });
-    const dark = this.mkMat(0.15, 0.15, 0.17, { metal: 0.3, gloss: 0.4 });
-    const flag = this.mkMat(0.15, 0.35, 0.85, {});
-    const red = this.mkMat(0.85, 0.15, 0.15, {});
-    const light = this.mkMat(0.7, 0.95, 1, { emissive: 2.5 });
+    const suit = this.mkMat(0.95, 0.95, 0.97, { metal: 0.03, gloss: 0.55 });
+    const joint = this.mkMat(0.38, 0.40, 0.45, { metal: 0.2, gloss: 0.45 });
+    const visor = this.mkMat(1.0, 0.76, 0.22, { metal: 0.98, gloss: 0.98 });
+    const pack = this.mkMat(0.86, 0.88, 0.91, { metal: 0.15, gloss: 0.5 });
+    const dark = this.mkMat(0.12, 0.13, 0.15, { metal: 0.15, gloss: 0.4 });
+    const goldFoil = this.mkMat(0.92, 0.75, 0.2, { metal: 0.85, gloss: 0.75 });
+    const flag = this.mkMat(0.12, 0.32, 0.82, {});
+    const red = this.mkMat(0.95, 0.15, 0.15, { emissive: 1.8 });
+    const light = this.mkMat(0.4, 0.95, 1.0, { emissive: 2.5 });
 
-    this.box(P, "box", [0.62, 0.7, 0.42], [0, 1.15, 0], suit); // torso
-    this.box(P, "box", [0.5, 0.25, 0.4], [0, 0.78, 0], joint); // waist ring
-    this.box(P, "box", [0.36, 0.22, 0.06], [0, 1.2, 0.22], pack); // chest control unit
-    this.box(P, "box", [0.08, 0.06, 0.02], [-0.08, 1.22, 0.255], red);
-    this.box(P, "box", [0.08, 0.06, 0.02], [0.08, 1.22, 0.255], light);
-    this.box(P, "box", [0.14, 0.09, 0.01], [0.24, 1.35, 0.215], flag); // mission patch
-    this.box(P, "sphere", [0.5, 0.5, 0.5], [0, 1.72, 0], suit); // helmet
-    this.box(P, "sphere", [0.38, 0.3, 0.2], [0, 1.73, 0.17], visor); // visor
-    this.box(P, "box", [0.06, 0.04, 0.06], [0.2, 1.88, 0.12], light); // helmet lamp
-    this.box(P, "box", [0.58, 0.75, 0.32], [0, 1.18, -0.36], pack); // PLSS backpack
-    this.box(P, "box", [0.5, 0.12, 0.3], [0, 1.6, -0.36], joint);
-    this.box(P, "cylinder", [0.04, 0.3, 0.04], [0.2, 1.75, -0.4], dark); // antenna
+    // Contoured capsule torso (rounded, non-blocky spacesuit body)
+    this.box(P, "capsule", [0.58, 0.54, 0.44], [0, 1.24, 0], suit);
+    // Ergonomic rounded shoulder bells
+    this.box(P, "sphere", [0.26, 0.22, 0.26], [-0.34, 1.44, 0], suit);
+    this.box(P, "sphere", [0.26, 0.22, 0.26], [0.34, 1.44, 0], suit);
+    // Neck collar seal ring
+    this.box(P, "cylinder", [0.44, 0.08, 0.44], [0, 1.54, 0], joint);
+    // Abdomen & waist mobility joints
+    this.box(P, "cylinder", [0.48, 0.20, 0.38], [0, 0.94, 0], joint);
+    this.box(P, "cylinder", [0.50, 0.08, 0.40], [0, 0.80, 0], joint);
 
+    // Chest control unit (RCU) with telemetry screen and indicators
+    this.box(P, "box", [0.34, 0.20, 0.08], [0, 1.22, 0.24], pack);
+    this.box(P, "box", [0.22, 0.08, 0.02], [0, 1.24, 0.285], light);
+    this.box(P, "cylinder", [0.03, 0.02, 0.03], [-0.08, 1.15, 0.285], red, [90, 0, 0]);
+    this.box(P, "cylinder", [0.03, 0.02, 0.03], [0.08, 1.15, 0.285], light, [90, 0, 0]);
+    this.box(P, "box", [0.12, 0.08, 0.01], [0.22, 1.36, 0.225], flag); // mission patch
+
+    // Helmet & Visor
+    this.box(P, "sphere", [0.54, 0.52, 0.52], [0, 1.74, 0], suit); // outer helmet dome
+    this.box(P, "sphere", [0.44, 0.36, 0.34], [0, 1.74, 0.15], visor); // gleaming gold reflective bubble visor
+    this.box(P, "box", [0.40, 0.05, 0.14], [0, 1.89, 0.16], suit, [-15, 0, 0]); // sun visor brow cap
+    // Dual EVA Helmet Spotlights
+    this.box(P, "cylinder", [0.07, 0.10, 0.07], [-0.24, 1.85, 0.12], pack, [-70, 0, 0]);
+    this.box(P, "sphere", [0.06, 0.04, 0.06], [-0.24, 1.85, 0.17], light);
+    this.box(P, "cylinder", [0.07, 0.10, 0.07], [0.24, 1.85, 0.12], pack, [-70, 0, 0]);
+    this.box(P, "sphere", [0.06, 0.04, 0.06], [0.24, 1.85, 0.17], light);
+
+    // PLSS Life-Support Backpack
+    this.box(P, "box", [0.56, 0.74, 0.30], [0, 1.22, -0.34], pack);
+    this.box(P, "cylinder", [0.52, 0.10, 0.26], [0, 1.62, -0.34], joint);
+    this.box(P, "cylinder", [0.11, 0.44, 0.11], [-0.22, 1.22, -0.42], goldFoil); // secondary O2 tanks
+    this.box(P, "cylinder", [0.11, 0.44, 0.11], [0.22, 1.22, -0.42], goldFoil);
+    this.box(P, "cylinder", [0.025, 0.45, 0.025], [0.22, 1.85, -0.38], dark); // antenna
+
+    // Articulated smooth rounded limbs
     const limb = (x: number, y: number, len: number, w: number) => {
       const pivot = new pc.Entity("Limb");
       pivot.setLocalPosition(x, y, 0);
       P.addChild(pivot);
-      this.box(pivot, "box", [w, len * 0.5, w], [0, -len * 0.25, 0], suit);
-      this.box(pivot, "box", [w * 1.05, 0.1, w * 1.05], [0, -len * 0.5, 0], joint);
-      this.box(pivot, "box", [w * 0.95, len * 0.45, w * 0.95], [0, -len * 0.75, 0], suit);
+      this.box(pivot, "cylinder", [w, len * 0.48, w], [0, -len * 0.24, 0], suit);
+      this.box(pivot, "cylinder", [w * 1.14, 0.08, w * 1.14], [0, -len * 0.5, 0], joint);
+      this.box(pivot, "cylinder", [w * 0.94, len * 0.44, w * 0.94], [0, -len * 0.74, 0], suit);
       return pivot;
     };
     const lArm = limb(-0.42, 1.42, 0.7, 0.18);
     const rArm = limb(0.42, 1.42, 0.7, 0.18);
-    this.box(lArm, "box", [0.16, 0.14, 0.16], [0, -0.74, 0], dark);
-    this.box(rArm, "box", [0.16, 0.14, 0.16], [0, -0.74, 0], dark);
-    const lLeg = limb(-0.16, 0.8, 0.72, 0.22);
-    const rLeg = limb(0.16, 0.8, 0.72, 0.22);
-    this.box(lLeg, "box", [0.26, 0.14, 0.36], [0, -0.74, 0.05], dark); // boots
-    this.box(rLeg, "box", [0.26, 0.14, 0.36], [0, -0.74, 0.05], dark);
+    this.box(lArm, "cylinder", [0.19, 0.05, 0.19], [0, -0.72, 0], joint);
+    this.box(rArm, "cylinder", [0.19, 0.05, 0.19], [0, -0.72, 0], joint);
+    this.box(lArm, "capsule", [0.17, 0.20, 0.17], [0, -0.76, 0.02], dark); // gloves
+    this.box(rArm, "capsule", [0.17, 0.20, 0.17], [0, -0.76, 0.02], dark);
+
+    const lLeg = limb(-0.17, 0.82, 0.72, 0.22);
+    const rLeg = limb(0.17, 0.82, 0.72, 0.22);
+    for (const leg of [lLeg, rLeg]) {
+      this.box(leg, "cylinder", [0.24, 0.06, 0.24], [0, -0.66, 0.02], joint);
+      this.box(leg, "box", [0.26, 0.08, 0.38], [0, -0.74, 0.06], dark); // boot sole
+      this.box(leg, "sphere", [0.25, 0.15, 0.24], [0, -0.70, 0.18], dark); // toe cap
+      this.box(leg, "cylinder", [0.24, 0.16, 0.24], [0, -0.70, -0.06], dark); // heel
+    }
     this.limbs = { lArm, rArm, lLeg, rLeg };
     const helmet = new pc.Entity("HelmetLamp");
     helmet.addComponent("light", {
@@ -2035,9 +2066,29 @@ export class PlayCanvasLunarWorld {
       0,
       ((r.flipped ? Math.sign(r.roll) * 1.6 : r.roll) * 180) / Math.PI,
     );
-    this.playerEntity.setPosition(r.x, r.y, r.z);
-    this.astro.x = r.x + 3;
+    // Position and orient astronaut in the driver's seat, facing the front of the vehicle
+    const localSeat = new pc.Vec3(-0.6, 0.12, 0.55);
+    const worldSeat = new pc.Vec3();
+    this.roverEntity.getWorldTransform().transformPoint(localSeat, worldSeat);
+    this.playerEntity.setPosition(worldSeat);
+    this.playerEntity.setRotation(this.roverEntity.getRotation());
+    this.astro.x = r.x;
     this.astro.z = r.z;
+    this.astro.heading = r.heading;
+    state.player.rotation = r.heading;
+
+    if (this.limbs) {
+      // Natural seated driving pose: legs resting forward on seat, hands on steering controls
+      const steer = (this.keys["a"] || this.keys["arrowleft"])
+        ? 1
+        : (this.keys["d"] || this.keys["arrowright"])
+          ? -1
+          : 0;
+      this.limbs.lLeg.setLocalEulerAngles(-78, -4, 0);
+      this.limbs.rLeg.setLocalEulerAngles(-78, 4, 0);
+      this.limbs.lArm.setLocalEulerAngles(-42 - steer * 12, 14, -8);
+      this.limbs.rArm.setLocalEulerAngles(-42 + steer * 12, -14, 8);
+    }
 
     // Rover camera auto-centering behind vehicle when driving without mouse input
     if (this.roverAutoCenterTimer > 0) {
