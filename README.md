@@ -4,17 +4,17 @@
 
 ![The Frontier - Team Sirius - NASA Space Apps Challenge](public/banner.jpg)
 
-[![Live Game](https://img.shields.io/badge/Play%20Live-the--frontier--game.vercel.app-7EE0B8?style=for-the-badge&logo=vercel)](https://the-frontier-game.vercel.app/)
-[![Video Presentation](https://img.shields.io/badge/YouTube-Video%20Presentation-FF0000?style=for-the-badge&logo=youtube)](https://youtu.be/i2C3QRcXBWo?si=6Dxj1w6UWJXKtHRN)
-[![Multiplayer Server](https://img.shields.io/badge/Server%20Status-Heroku%20Online-8FD3FF?style=for-the-badge&logo=heroku)](https://the-frontier-colyseus-996f14385e12.herokuapp.com/health)
-[![NASA Space Apps](https://img.shields.io/badge/NASA%20Space%20Apps-Challenge%202026-FFD166?style=for-the-badge&logo=nasa)](https://www.spaceappschallenge.org/)
+[![Live Game](https://img.shields.io/badge/Play%20Live-the--frontier--game.vercel.app-7EE0B8?style=for-the-badge&logo=vercel)](https://the-frontier-game.vercel.app/) [![Multiplayer Server](https://img.shields.io/badge/Server%20Status-Heroku%20Online-8FD3FF?style=for-the-badge&logo=heroku)](https://the-frontier-colyseus-996f14385e12.herokuapp.com/health)  
+[![Video Presentation](https://img.shields.io/badge/YouTube-Video%20Presentation-FF0000?style=for-the-badge&logo=youtube)](https://youtu.be/i2C3QRcXBWo?si=6Dxj1w6UWJXKtHRN) [![Project Demonstration](https://img.shields.io/badge/Figma-Project%20Demonstration-F24E1E?style=for-the-badge&logo=figma)](https://www.figma.com/deck/UZ4Xne3GKSa74aExel3V8g) [![NASA Space Apps](https://img.shields.io/badge/NASA%20Space%20Apps-Team%20Sirius-FFD166?style=for-the-badge&logo=nasa)](https://www.spaceappschallenge.org/2026/find-a-team/team-sirius1/?tab=project)
 
 ---
 
 ## 📽️ Project Links & Presentation
 
+- **🎮 Live Playable Game:** [https://the-frontier-game.vercel.app/](https://the-frontier-game.vercel.app/) · **🖥️ Multiplayer Server Status:** [Heroku Online Health Check](https://the-frontier-colyseus-996f14385e12.herokuapp.com/health)
 - **🎥 Video Presentation:** [YouTube Video Presentation](https://youtu.be/i2C3QRcXBWo?si=6Dxj1w6UWJXKtHRN)
-- **🎮 Live Playable Game:** [https://the-frontier-game.vercel.app/](https://the-frontier-game.vercel.app/)
+- **📊 Project Demonstration:** [Figma Presentation Deck](https://www.figma.com/deck/UZ4Xne3GKSa74aExel3V8g)
+- **🚀 NASA Space Apps Challenge:** [Team Sirius Project Page](https://www.spaceappschallenge.org/2026/find-a-team/team-sirius1/?tab=project)
 
 ---
 
@@ -129,7 +129,7 @@ The Colyseus game server will listen on `ws://localhost:2567`. Health check avai
 
 ### 4. Run Test Suite
 ```bash
-npm run test         # Vitest unit & integration test suite (97 tests)
+npm run test         # Vitest unit & integration test suite (119 tests)
 npm run typecheck    # TypeScript compiler check
 npm run build        # Production build verification
 ```

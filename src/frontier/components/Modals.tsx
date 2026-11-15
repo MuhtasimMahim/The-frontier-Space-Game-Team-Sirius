@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import type { Quality } from "../game/playcanvasWorld";
 import { CONFIG, type FactDef } from "../game/config";
 import { gameSim, type GameState } from "../game/simulation";
 import {
@@ -412,7 +413,30 @@ export const BriefingUI: React.FC<{ state: GameState }> = ({ state }) => {
 };
 
 // In-mission pause / exit menu (Esc)
-export const PauseMenuUI: React.FC<{ state: GameState }> = ({ state }) => {
+export const PauseMenuUI: React.FC<{
+  state: GameState;
+  quality?: Quality;
+  onSetQuality?: (q: Quality) => void;
+}> = ({ state, quality: propQuality, onSetQuality }) => {
+  const [currentQuality, setCurrentQuality] = useState<Quality>(() => {
+    if (propQuality) return propQuality;
+    return (localStorage.getItem("frontier-quality") as Quality) || "medium";
+  });
+
+  const activeQuality = propQuality ?? currentQuality;
+
+  const handleSelectQuality = (q: Quality) => {
+    setCurrentQuality(q);
+    if (onSetQuality) {
+      onSetQuality(q);
+    } else {
+      (window as any).__world?.setQuality(q);
+      try {
+        localStorage.setItem("frontier-quality", q);
+      } catch {}
+    }
+  };
+
   return (
     <div className="absolute inset-0 z-[70] flex items-center justify-center p-6 select-none font-gotham text-white bg-black/70 backdrop-blur-md">
       <div className="max-w-md w-full luna-panel rounded-[24px] p-8 flex flex-col gap-5 shadow-2xl">
@@ -448,6 +472,33 @@ export const PauseMenuUI: React.FC<{ state: GameState }> = ({ state }) => {
           >
             Exit to Title
           </button>
+        </div>
+
+        {/* Graphics Settings */}
+        <div className="rounded-[16px] bg-[#080C1A]/60 border border-white/10 p-3.5 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold uppercase tracking-wider text-[#8FD3FF]">Graphics Quality</span>
+            <span className="text-[11px] text-[#AAB6DC] font-medium capitalize">{activeQuality} Quality</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {(["low", "medium", "high"] as Quality[]).map((q) => {
+              const active = activeQuality === q;
+              return (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => handleSelectQuality(q)}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                    active
+                      ? "bg-[#7EE0B8] text-[#0F2A3A] shadow-md shadow-[#7EE0B8]/20"
+                      : "bg-white/5 hover:bg-white/15 text-[#CFD8F7] border border-white/10"
+                  }`}
+                >
+                  {q}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="rounded-[16px] bg-[#080C1A]/60 border border-white/10 p-3.5 flex flex-col gap-1 text-xs text-[#CFD8F7]">

@@ -152,29 +152,22 @@ export const App: React.FC = () => {
         />
       )}
 
-      {gameState.phase === "playing" && gameState.menuOpen && <PauseMenuUI state={gameState} />}
+      {gameState.phase === "playing" && gameState.menuOpen && (
+        <PauseMenuUI
+          state={gameState}
+          quality={quality}
+          onSetQuality={(q) => {
+            worldRef.current?.setQuality(q);
+            setQuality(q);
+          }}
+        />
+      )}
 
-      <div className="absolute bottom-3 right-3 z-[60] flex items-center gap-2 rounded-lg bg-[#121A30]/85 px-3 py-1.5 text-xs text-white font-gotham select-none">
-        {loaded.done < loaded.total && (
-          <span className="text-[#AAB6DC]">
-            Loading 3D models {Math.round((loaded.done / loaded.total) * 100)}%
-          </span>
-        )}
-        <span className="text-[#AAB6DC]">Graphics</span>
-        {(["low", "medium", "high"] as Quality[]).map((q) => (
-          <button
-            key={q}
-            onClick={(e) => {
-              worldRef.current?.setQuality(q);
-              setQuality(q);
-              (e.currentTarget as HTMLButtonElement).blur();
-            }}
-            className={`rounded px-2 py-0.5 capitalize ${quality === q ? "bg-[#7EE0B8] text-[#0F2A3A] font-bold" : "bg-white/10 hover:bg-white/20"}`}
-          >
-            {q}
-          </button>
-        ))}
-      </div>
+      {loaded.done < loaded.total && (
+        <div className="absolute bottom-3 right-3 z-[60] flex items-center gap-2 rounded-lg bg-[#121A30]/85 px-3 py-1.5 text-xs text-[#AAB6DC] font-gotham select-none pointer-events-none">
+          Loading 3D models {Math.round((loaded.done / loaded.total) * 100)}%
+        </div>
+      )}
 
       {gameState.phase === "title" && <TitleUI state={gameState} />}
 
