@@ -136,7 +136,7 @@ export class RemotePlayerEntity {
   private walkPhase = 0;
   private interp = new InterpolationBuffer(100);
   private suitColor: [number, number, number];
-  private inRover = false;
+  private _inRover = false;
   private _name: string;
   private app: pc.Application;
 
@@ -298,8 +298,16 @@ export class RemotePlayerEntity {
     this.interp.push(x, z, rotation);
   }
 
+  get name(): string {
+    return this._name;
+  }
+
+  get inRover(): boolean {
+    return this._inRover;
+  }
+
   setInRover(inRover: boolean) {
-    this.inRover = inRover;
+    this._inRover = inRover;
     this.entity.enabled = !inRover;
   }
 
@@ -346,7 +354,7 @@ export class RemotePlayerEntity {
 
   /** Frame update — call every frame with dt in seconds. */
   update(dt: number, camera: pc.CameraComponent | null) {
-    if (this.inRover) return;
+    if (this._inRover) return;
 
     const sample = this.interp.sample();
     if (sample) {

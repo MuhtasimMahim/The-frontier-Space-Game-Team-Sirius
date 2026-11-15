@@ -7,13 +7,28 @@ import { HUD } from "./components/HUD";
 import { ChapterSelectUI } from "./components/ChapterSelectUI";
 import { SiteSelectUI } from "./components/SiteSelectUI";
 import { TitleUI, BriefingUI, ResultUI, PauseMenuUI } from "./components/Modals";
+import { useMultiplayer } from "./game/multiplayer/useMultiplayer";
+import { MultiplayerIntegration } from "./game/multiplayer/integration";
+import {
+  MultiplayerLobbyUI,
+  MultiplayerHUDOverlay,
+  type LobbyPlayer,
+} from "./game/multiplayer/MultiplayerUI";
+import { tallyChapterVotes, type ChapterId } from "./game/chapters";
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [gameState, setGameState] = useState<GameState>(gameSim.state);
   const worldRef = useRef<PlayCanvasLunarWorld | null>(null);
+  const integrationRef = useRef<MultiplayerIntegration | null>(null);
   const [quality, setQuality] = useState<Quality>("medium");
   const [loaded, setLoaded] = useState({ done: 0, total: 1 });
+
+  // Multiplayer networking hook
+  const mp = useMultiplayer({
+    playerName: "Astronaut",
+  });
+
   // Each site is its own scene; switching chapters rebuilds the world behind the briefing
   const siteKey = siteKeyForMode(gameState.missionMode);
 
@@ -26,10 +41,17 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     let world: PlayCanvasLunarWorld | null = null;
+    let integration: MultiplayerIntegration | null = null;
+
     if (canvasRef.current) {
       world = new PlayCanvasLunarWorld(canvasRef.current, siteKey);
       worldRef.current = world;
       setQuality(world.quality);
+
+      integration = new MultiplayerIntegration(mp.client);
+      integration.init(world, gameSim);
+      integrationRef.current = integration;
+      mp.setRemotePlayerManager(world.remotePlayerManager);
     }
     setLoaded({ done: 0, total: 1 });
     const poll = setInterval(() => {
@@ -40,12 +62,24 @@ export const App: React.FC = () => {
 
     return () => {
       clearInterval(poll);
+      mp.setRemotePlayerManager(null);
+      if (integration) {
+        integration.destroy();
+        if (integrationRef.current === integration) integrationRef.current = null;
+      }
       if (world) {
         world.destroy();
         if (worldRef.current === world) worldRef.current = null;
       }
     };
   }, [siteKey]);
+
+  useEffect(() => {
+    if (worldRef.current && mp.client && integrationRef.current) {
+      integrationRef.current.setClient(mp.client);
+      mp.setRemotePlayerManager(worldRef.current.remotePlayerManager);
+    }
+  }, [mp.client]);
 
   const story = isStoryChapter(gameState.missionMode)
     ? STORY_CHAPTERS[gameState.missionMode]
@@ -62,6 +96,19 @@ export const App: React.FC = () => {
 
       {/* 2. In-Game HUD: Left Column, Top Center, Right Column, Oxygen, Radar */}
       {gameState.phase === "playing" && <HUD state={gameState} />}
+
+      {/* 2a. Multiplayer HUD Overlay */}
+      {gameState.phase === "playing" && mp.isConnected && (
+        <MultiplayerHUDOverlay
+          players={mp.players as LobbyPlayer[]}
+          localSessionId={mp.sessionId}
+          isConnected={mp.isConnected}
+          isReconnecting={mp.isReconnecting}
+          recentPing={mp.recentPing}
+          onSendChat={mp.sendChat}
+          onSendPing={mp.sendPing}
+        />
+      )}
 
       {/* 2b. Pause / Exit Menu (Esc while playing) */}
       {gameState.phase === "playing" && gameState.menuOpen && <PauseMenuUI state={gameState} />}
@@ -93,10 +140,66 @@ export const App: React.FC = () => {
       {gameState.phase === "title" && <TitleUI state={gameState} />}
 
       {/* 3b. Chapter Select / Crew Vote */}
-      {gameState.phase === "chapters" && <ChapterSelectUI state={gameState} />}
+      {gameState.phase === "chapters" &&
+        (gameState.playMode === "crew" && mp.isConnected ? (
+          <MultiplayerLobbyUI
+            roomCode={mp.roomCode}
+            isConnected={mp.isConnected}
+            isConnecting={mp.isConnecting}
+            isHost={mp.isHost}
+            players={mp.players as LobbyPlayer[]}
+            localSessionId={mp.sessionId}
+            error={mp.error}
+            onCreateRoom={(chapterId) => mp.createRoom(chapterId)}
+            onJoinRoom={(code) => mp.joinRoom(code)}
+            onToggleReady={() => mp.sendReady()}
+            onVoteChapter={(chapterId) => {
+              mp.sendVote(chapterId);
+              const seat = mp.players.find((p) => p.sessionId === mp.sessionId)?.seat ?? 0;
+              gameSim.castChapterVote(seat, chapterId);
+            }}
+            onStartGame={() => {
+              const winning =
+                tallyChapterVotes(
+                  (mp.players as LobbyPlayer[])
+                    .map((p) => p.vote)
+                    .filter((v): v is ChapterId => !!v)
+                ).winner ?? "chapter1";
+              gameSim.startVotedChapter(winning);
+            }}
+            onLeaveRoom={() => mp.disconnect()}
+          />
+        ) : (
+          <ChapterSelectUI state={gameState} />
+        ))}
 
       {/* 4. Landing Site Selection (Matches SiteSelectUI.luau) */}
-      {gameState.phase === "selecting" && <SiteSelectUI />}
+      {gameState.phase === "selecting" &&
+        (gameState.playMode === "crew" && mp.isConnected ? (
+          <MultiplayerLobbyUI
+            roomCode={mp.roomCode}
+            isConnected={mp.isConnected}
+            isConnecting={mp.isConnecting}
+            isHost={mp.isHost}
+            players={mp.players as LobbyPlayer[]}
+            localSessionId={mp.sessionId}
+            error={mp.error}
+            onCreateRoom={(chapterId) => mp.createRoom(chapterId)}
+            onJoinRoom={(code) => mp.joinRoom(code)}
+            onToggleReady={() => mp.sendReady()}
+            onVoteChapter={(chapterId) => {
+              mp.sendVote(chapterId);
+              const seat = mp.players.find((p) => p.sessionId === mp.sessionId)?.seat ?? 0;
+              gameSim.castChapterVote(seat, chapterId);
+            }}
+            onStartGame={() => {
+              gameSim.selectSite(gameSim.state.selectedSite);
+            }}
+            onLeaveRoom={() => mp.disconnect()}
+          />
+        ) : (
+          <SiteSelectUI />
+        ))}
 
       {/* 4b. Mission Briefing (Chapter 1 or story chapters 2–4) */}
       {gameState.phase === "briefing" && <BriefingUI state={gameState} />}

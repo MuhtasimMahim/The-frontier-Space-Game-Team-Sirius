@@ -61,6 +61,8 @@ import {
   chapterRoute,
   type StoryChapterDef,
 } from "./storyline";
+import { RemotePlayerManager } from "./multiplayer/remotePlayers";
+import { StormVisualController } from "./multiplayer/stormVisuals";
 
 export type Quality = "low" | "medium" | "high";
 export function detectQuality(): Quality {
@@ -93,6 +95,8 @@ export class PlayCanvasLunarWorld {
   public app: pc.Application;
   public cameraEntity!: pc.Entity;
   public lightEntity!: pc.Entity;
+  public remotePlayerManager!: RemotePlayerManager;
+  public stormController!: StormVisualController;
 
   // Scene Entities
   private playerEntity!: pc.Entity;
@@ -179,6 +183,18 @@ export class PlayCanvasLunarWorld {
     this.loadModels();
     this.applyQuality(this.quality);
     this.setupInputs();
+
+    this.remotePlayerManager = new RemotePlayerManager(this.app, this.app.root);
+    if (this.cameraEntity?.camera) {
+      this.remotePlayerManager.setCamera(this.cameraEntity.camera);
+    }
+    this.stormController = new StormVisualController(
+      this.app,
+      this.lightEntity,
+      this.sky,
+      this.cameraEntity,
+      this.terrainHeightMap,
+    );
 
     this.app.on("update", (dt: number) => this.update(dt));
     if (import.meta.env.DEV) {
@@ -1438,6 +1454,8 @@ export class PlayCanvasLunarWorld {
     if (gameSim.state.phase !== "playing" || gameSim.state.menuOpen) return;
 
     const state = gameSim.state;
+    this.remotePlayerManager.update(dt);
+    this.stormController.update(dt, state.activeStorm, state.eventBanner);
     const look = this.look;
     const meX = state.player.inRover ? state.rover.x : state.player.x;
     const meZ = state.player.inRover ? state.rover.z : state.player.z;
@@ -2295,6 +2313,26 @@ export class PlayCanvasLunarWorld {
       : null;
   }
 
+  public getApp(): pc.Application {
+    return this.app;
+  }
+
+  public getLightEntity(): pc.Entity {
+    return this.lightEntity;
+  }
+
+  public getSkyRig(): SkyRig | null {
+    return this.sky;
+  }
+
+  public getRemotePlayerManager(): RemotePlayerManager {
+    return this.remotePlayerManager;
+  }
+
+  public getStormController(): StormVisualController {
+    return this.stormController;
+  }
+
   public destroy() {
     if (this.isDestroyed) return;
     this.isDestroyed = true;
@@ -2306,6 +2344,8 @@ export class PlayCanvasLunarWorld {
       this.cameraFrame.destroy();
       this.cameraFrame = null;
     }
+    this.remotePlayerManager?.destroy();
+    this.stormController?.destroy();
     this.app.destroy();
   }
 }
